@@ -1,0 +1,4 @@
+# Interdire l'indexation de ce site par tous les moteurs de recherche
+
+User-agent: *
+Disallow: /
