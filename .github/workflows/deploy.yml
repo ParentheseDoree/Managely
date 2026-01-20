@@ -1,4 +1,4 @@
-# Workflow pour déployer l'application Blazor WebAssembly sur GitHub Pages
+# Workflow pour déployer l'application sur GitHub Pages
 # Déclenché automatiquement à chaque push sur la branche main
 
 name: Deploy to GitHub Pages
@@ -32,7 +32,7 @@ jobs:
       - name: Setup .NET SDK
         uses: actions/setup-dotnet@v5
         with:
-          dotnet-version: '9.0.x'
+          dotnet-version: '9'
 
       - name: Restauration des dépendances
         run: dotnet restore
