@@ -1,0 +1,76 @@
+# Workflow pour déployer l'application Blazor WebAssembly sur GitHub Pages
+# Déclenché automatiquement à chaque push sur la branche main
+
+name: Deploy to GitHub Pages
+
+on:
+  # Déclenchement sur push vers main
+  push:
+    branches: [main]
+  # Permet aussi le déclenchement manuel depuis l'onglet Actions
+  workflow_dispatch:
+
+# Permissions nécessaires pour déployer sur GitHub Pages
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Un seul déploiement à la fois
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  # Job de build
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout du code
+        uses: actions/checkout@v4
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+
+      - name: Restauration des dépendances
+        run: dotnet restore
+
+      - name: Build en mode Release
+        run: dotnet publish sources/ParentheseDoree.Managely.App/ParentheseDoree.Managely.App.csproj -c Release -o release --nologo
+
+      # Modification du base href pour GitHub Pages
+      # Le nom du repository est utilisé automatiquement
+      - name: Mise à jour du base href
+        run: |
+          REPO_NAME=$(echo "${{ github.repository }}" | cut -d'/' -f2)
+          sed -i 's|<base href="/" />|<base href="/'"$REPO_NAME"'/" />|g' release/wwwroot/index.html
+
+      # Ajouter .nojekyll pour éviter que GitHub ignore les fichiers _framework
+      - name: Créer .nojekyll
+        run: touch release/wwwroot/.nojekyll
+
+      # Copier index.html vers 404.html pour le routing SPA
+      - name: Créer 404.html pour le routing SPA
+        run: cp release/wwwroot/index.html release/wwwroot/404.html
+
+      - name: Configuration de GitHub Pages
+        uses: actions/configure-pages@v4
+
+      - name: Upload des fichiers
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: 'release/wwwroot'
+
+  # Job de déploiement
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Déploiement sur GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
