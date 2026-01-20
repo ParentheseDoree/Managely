@@ -1,29 +1,65 @@
-# Guide du développeur - Managely
+<p align="center">
+	<h1>Guide de développement - Managely</h1>
+</p>
 
-## Prérequis
+## Comment contribuer
 
-- [.NET 9.0 SDK](https://dotnet.microsoft.com/download/dotnet/9.0)
-- [Bun](https://bun.sh/) (v1.3.6 ou supérieur)
+### 1. Fork et clone
 
-## Installation
+* Fork le dépôt sur ton compte GitHub.
+* Clone le fork sur ta machine locale :
 
 ```bash
-# Cloner le dépôt
 git clone https://github.com/ParentheseDoree/Managely.git
 cd Managely
-
-# Installer les dépendances JavaScript
-bun install
 ```
 
-## Commandes
+### 2. Créer une branche
 
-Tous les scripts sont centralisés dans le `package.json`.
+Crée une branche dédiée à ta fonctionnalité ou correction :
 
-| Commande | Description |
-|----------|-------------|
-| `bun run build` | Compiler le projet |
-| `bun run build:release` | Compiler en mode Release |
-| `bun run start` | Lancer l'application |
-| `bun run test` | Lancer les tests |
-| `bun run commit` | Créer un commit guidé (Commitizen) |
+```bash
+git checkout -b feature/ma-nouvelle-fonctionnalite
+```
+
+### 3. Développement
+
+* Installe les dépendances et build le projet (voir la section Installation).
+* Effectue tes modifications.
+* Teste ton code avec `bun run test` ou `dotnet test`.
+
+### 4. Commits guidés avec Commitizen
+
+Avant de créer un commit avec Commitizen, **ajoute les fichiers modifiés à l’index Git** :
+
+```bash
+git add .
+```
+
+Puis lance Commitizen pour créer le commit guidé :
+
+```bash
+bun run commit
+```
+
+* Commitizen te guidera pour choisir le type de commit (feat, fix, chore, etc.) et rédiger un message clair.
+* Exemple de type de commit :
+
+  * `feat: ajouter un nouveau composant de fidélité`
+  * `fix: correction du calcul des points de fidélité`
+
+### 5. Push et Pull Request
+
+* Pousse ta branche sur ton fork :
+
+```bash
+git push origin feature/ma-nouvelle-fonctionnalite
+```
+
+* Ouvre une **Pull Request** (PR) vers la branche `main` du dépôt original.
+* Décris clairement ce que fait ta PR, les changements majeurs et toute information utile pour la relecture.
+
+### 6. Revue et fusion
+
+* Un mainteneur vérifiera ta PR.
+* Après validation, ta PR sera fusionnée dans `main`.
