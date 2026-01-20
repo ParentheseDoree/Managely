@@ -1,0 +1,115 @@
+﻿<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <base href="/" />
+
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+    <title>Managely - Centre Esthétique Parenthèse Dorée</title>
+
+    <style>
+        /* Police de caractères par défaut pour toute l'application */
+        html, body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        /* =================================================================
+           Styles pour l'indicateur de chargement circulaire
+           Affiché pendant le téléchargement des fichiers Blazor
+           ================================================================= */
+        .loading-progress {
+            position: relative;
+            display: block;
+            width: 8rem;
+            height: 8rem;
+            margin: 20vh auto 1rem auto; /* Centré verticalement et horizontalement */
+        }
+
+        /* Cercle de fond (gris) */
+        .loading-progress circle {
+            fill: none;
+            stroke: #e0e0e0;
+            stroke-width: 0.6rem;
+            transform-origin: 50% 50%;
+            transform: rotate(-90deg); /* Commence en haut du cercle */
+        }
+
+        /* Cercle de progression (bleu) - se remplit au fur et à mesure */
+        .loading-progress circle:last-child {
+            stroke: #1b6ec2;
+            /* La variable --blazor-load-percentage est mise à jour automatiquement par Blazor */
+            stroke-dasharray: calc(3.141 * var(--blazor-load-percentage, 0%) * 0.8), 500%;
+            transition: stroke-dasharray 0.05s ease-in-out;
+        }
+
+        /* Texte affichant le pourcentage de chargement */
+        .loading-progress-text {
+            text-align: center;
+            font-weight: bold;
+            color: #1b6ec2;
+        }
+
+        .loading-progress-text::after {
+            /* Affiche le texte de progression (ex: "50%") */
+            content: var(--blazor-load-percentage-text, "Chargement");
+        }
+
+        /* =================================================================
+           Styles pour la barre d'erreur Blazor
+           Affichée en cas d'erreur non gérée dans l'application
+           ================================================================= */
+        #blazor-error-ui {
+            background: lightyellow;
+            bottom: 0;
+            box-shadow: 0 -1px 2px rgba(0, 0, 0, 0.2);
+            display: none; /* Caché par défaut, Blazor l'affiche si nécessaire */
+            left: 0;
+            padding: 0.6rem 1.25rem 0.7rem 1.25rem;
+            position: fixed;
+            width: 100%;
+            z-index: 1000;
+        }
+
+        #blazor-error-ui .dismiss {
+            cursor: pointer;
+            position: absolute;
+            right: 0.75rem;
+            top: 0.5rem;
+        }
+    </style>
+</head>
+<body>
+    <!--
+        Conteneur principal de l'application Blazor.
+        L'id "app" correspond au sélecteur "#app" dans Program.cs.
+        Le contenu (loading) est remplacé par l'app Blazor une fois chargée.
+    -->
+    <div id="app">
+        <!-- Indicateur de chargement SVG (cercle de progression) -->
+        <svg class="loading-progress">
+            <circle r="40%" cx="50%" cy="50%" /> <!-- Cercle de fond -->
+            <circle r="40%" cx="50%" cy="50%" /> <!-- Cercle de progression -->
+        </svg>
+        <div class="loading-progress-text"></div>
+    </div>
+
+    <!--
+        Interface d'erreur Blazor.
+        Affichée automatiquement par Blazor en cas d'erreur non gérée.
+        Permet de recharger la page ou de fermer le message.
+    -->
+    <div id="blazor-error-ui">
+        Une erreur inattendue s'est produite.
+        <a href="." class="reload">Recharger</a>
+        <span class="dismiss">🗙</span>
+    </div>
+    
+    <!--
+        Script Blazor WebAssembly.
+        Ce script télécharge le runtime .NET et l'application,
+        puis démarre l'exécution dans le navigateur.
+    -->
+    <script src="_framework/blazor.webassembly.js"></script>
+</body>
+</html>

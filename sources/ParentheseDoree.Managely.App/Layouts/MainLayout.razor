@@ -1,0 +1,28 @@
+﻿@*
+    =============================================================================
+    MainLayout.razor - Layout principal de l'application
+    =============================================================================
+*@
+
+@* 
+    Héritage obligatoire pour un composant Layout.
+    LayoutComponentBase fournit la propriété Body.
+*@
+@inherits LayoutComponentBase
+
+@*
+    Structure du layout - À personnaliser selon les besoins.
+    
+    Exemple de structure complète :
+    <header>Navigation, logo...</header>
+    <main>@Body</main>
+    <footer>Copyright, liens...</footer>
+    
+    Pour l'instant, on affiche simplement le contenu de la page.
+*@
+
+@* 
+    @Body est remplacé par le contenu de la page actuelle.
+    Par exemple, si l'utilisateur est sur "/", c'est Home.razor qui s'affiche ici.
+*@
+@Body

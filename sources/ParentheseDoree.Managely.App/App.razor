@@ -1,0 +1,36 @@
+﻿@*
+    =============================================================================
+    App.razor - Composant racine de l'application Blazor
+    =============================================================================
+*@
+
+@* 
+    Le composant Router gère la navigation dans l'application.
+    AppAssembly indique où chercher les pages (composants avec @page).
+*@
+<Router AppAssembly="@typeof(App).Assembly">
+
+    @* 
+        Found : Affiché quand une route correspond à une page existante.
+        Context="routeData" : Contient les informations de la route (URL, paramètres).
+    *@
+    <Found Context="routeData">
+        @* RouteView affiche la page correspondante avec le layout par défaut (MainLayout) *@
+        <RouteView RouteData="@routeData" DefaultLayout="@typeof(MainLayout)" />
+    </Found>
+
+    @* 
+        NotFound : Affiché quand l'URL ne correspond à aucune page.
+        Équivalent d'une page d'erreur 404.
+    *@
+    <NotFound>
+        @* Définit le titre de l'onglet du navigateur *@
+        <PageTitle>Page non trouvée</PageTitle>
+        
+        @* Utilise le même layout pour garder une apparence cohérente *@
+        <LayoutView Layout="@typeof(MainLayout)">
+            <p role="alert">Désolé, cette page n'existe pas.</p>
+        </LayoutView>
+    </NotFound>
+
+</Router>
