@@ -1,0 +1,22 @@
+{
+    "name": "@parenthesedoree/managely",
+    "version": "1.0.0",
+    "private": true,
+    "packageManager": "bun@1.3.6",
+    "scripts": {
+        "build": "dotnet build",
+        "build:release": "dotnet build -c Release",
+        "start": "dotnet run --project sources/ParentheseDoree.Managely.App",
+        "test": "dotnet test",
+        "commit": "cz"
+    },
+    "devDependencies": {
+        "commitizen": "^4.3.1",
+        "cz-conventional-changelog": "^3.3.0"
+    },
+    "config": {
+        "commitizen": {
+            "path": "cz-conventional-changelog"
+        }
+    }
+}
