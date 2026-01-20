@@ -1,6 +1,6 @@
-<p align="center">
-	<h1>Guide de développement - Managely</h1>
-</p>
+<div>
+	<h1 align="center">Guide de développement - Managely</h1>
+</div>
 
 ## Comment contribuer
 

@@ -1,6 +1,6 @@
-<p align="center">
-    <h1>Managely</h1>
-</p>
+<div>
+	<h1 align="center">Managely</h1>
+</div>
 
 ## Prérequis
 
