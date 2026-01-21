@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="utf-8">
+    <title>Redirection...</title>
+    <script>
+        // Script de redirection SPA pour GitHub Pages
+        // Stocke le chemin actuel et redirige vers la page d'accueil
+        sessionStorage.setItem('spa-redirect', window.location.pathname + window.location.search + window.location.hash);
+        window.location.replace(window.location.origin + '/__BASE_PATH__');
+    </script>
+</head>
+<body>
+    <p>Redirection en cours...</p>
+</body>
+</html>
