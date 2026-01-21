@@ -1,0 +1,558 @@
+@*
+    =============================================================================
+    Clients.razor - Page de gestion des clients avec CRUD complet
+    =============================================================================
+*@
+
+@page "/clients"
+
+@using ParentheseDoree.Managely.App.Services
+@using ParentheseDoree.Managely.App.Models
+
+@inject GoogleAuthService AuthService
+@inject GoogleSheetsService SheetsService
+@inject BrowserLoggerService Logger
+@inject NavigationManager NavigationManager
+
+<PageTitle>Clients - Managely</PageTitle>
+
+@if (!_isAuthenticated)
+{
+    <div class="text-center py-5">
+        <div class="spinner-border text-gold" role="status">
+            <span class="visually-hidden">Chargement...</span>
+        </div>
+    </div>
+}
+else
+{
+    @* En-tête de la page *@
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h1 class="h3 mb-1">
+                <i class="bi bi-people me-2"></i>Clients
+            </h1>
+            <p class="text-muted mb-0">Gestion de la clientèle</p>
+        </div>
+        
+        @if (AuthService.CanWrite)
+        {
+            <button class="btn btn-gold" @onclick="ShowAddModal">
+                <i class="bi bi-plus-lg me-1"></i> Nouveau client
+            </button>
+        }
+    </div>
+
+    @* Message d'alerte *@
+    @if (!string.IsNullOrEmpty(_alertMessage))
+    {
+        <div class="alert @_alertClass alert-dismissible fade show" role="alert">
+            @_alertMessage
+            <button type="button" class="btn-close" @onclick="() => _alertMessage = string.Empty"></button>
+        </div>
+    }
+
+    @* Barre de recherche *@
+    <div class="card mb-4 border-0 shadow-sm">
+        <div class="card-body">
+            <div class="row g-3 align-items-center">
+                <div class="col-md-6">
+                    <div class="input-group">
+                        <span class="input-group-text bg-white">
+                            <i class="bi bi-search"></i>
+                        </span>
+                        <input type="text" class="form-control border-start-0" 
+                               placeholder="Rechercher un client..."
+                               @bind="_searchTerm" @bind:event="oninput" @onkeyup="FilterClients" />
+                        @if (!string.IsNullOrEmpty(_searchTerm))
+                        {
+                            <button class="btn btn-outline-secondary" @onclick="ClearSearch">
+                                <i class="bi bi-x-lg"></i>
+                            </button>
+                        }
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <button class="btn btn-outline-secondary w-100" @onclick="RefreshDataAsync" disabled="@_isLoading">
+                        <i class="bi bi-arrow-clockwise me-1 @(_isLoading ? "spin" : "")"></i> Actualiser
+                    </button>
+                </div>
+                <div class="col-md-3 text-end">
+                    <span class="text-muted">@_filteredClients.Count client(s)</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @* Tableau des clients *@
+    @if (_isLoading)
+    {
+        <div class="text-center py-5">
+            <div class="spinner-border text-gold" role="status">
+                <span class="visually-hidden">Chargement...</span>
+            </div>
+        </div>
+    }
+    else if (_filteredClients.Count == 0)
+    {
+        <div class="alert alert-info">
+            <i class="bi bi-info-circle me-2"></i>
+            @if (string.IsNullOrEmpty(_searchTerm))
+            {
+                <span>Aucun client enregistré.</span>
+            }
+            else
+            {
+                <span>Aucun client ne correspond à votre recherche.</span>
+            }
+        </div>
+    }
+    else
+    {
+        <div class="card border-0 shadow-sm">
+            <div class="table-responsive">
+                <table class="table table-hover mb-0">
+                    <thead class="bg-light">
+                        <tr>
+                            <th @onclick='() => SortBy("Nom")' style="cursor:pointer">
+                                Nom
+                                @if (_sortColumn == "Nom")
+                                {
+                                    <i class="bi @(_sortAscending ? "bi-sort-alpha-down" : "bi-sort-alpha-up") ms-1"></i>
+                                }
+                            </th>
+                            <th>Téléphone</th>
+                            <th>Email</th>
+                            <th>Date de naissance</th>
+                            <th class="text-end">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var client in _filteredClients)
+                        {
+                            <tr>
+                                <td>
+                                    <strong>@client.NomComplet</strong>
+                                </td>
+                                <td>
+                                    @if (!string.IsNullOrEmpty(client.Telephone))
+                                    {
+                                        <i class="bi bi-telephone me-1 text-muted"></i>
+                                        @client.Telephone
+                                    }
+                                </td>
+                                <td>
+                                    @if (!string.IsNullOrEmpty(client.Email))
+                                    {
+                                        <i class="bi bi-envelope me-1 text-muted"></i>
+                                        @client.Email
+                                    }
+                                </td>
+                                <td>@client.DateNaissance</td>
+                                <td class="text-end">
+                                    <button class="btn btn-sm btn-outline-primary me-1"
+                                            @onclick="() => ShowViewModal(client)" title="Voir">
+                                        <i class="bi bi-eye"></i>
+                                    </button>
+                                    @if (AuthService.CanWrite)
+                                    {
+                                        <button class="btn btn-sm btn-outline-secondary me-1"
+                                                @onclick="() => ShowEditModal(client)" title="Modifier">
+                                            <i class="bi bi-pencil"></i>
+                                        </button>
+                                        <button class="btn btn-sm btn-outline-danger"
+                                                @onclick="() => ShowDeleteConfirm(client)" title="Supprimer">
+                                            <i class="bi bi-trash"></i>
+                                        </button>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    }
+}
+
+@* Modal d'ajout/modification/vue *@
+@if (_showModal)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">
+                        @if (_isViewMode)
+                        {
+                            <i class="bi bi-eye me-2"></i>
+                            <text>Détails du client</text>
+                        }
+                        else if (_editingClient.RowIndex == 0)
+                        {
+                            <i class="bi bi-person-plus me-2"></i>
+                            <text>Nouveau client</text>
+                        }
+                        else
+                        {
+                            <i class="bi bi-pencil me-2"></i>
+                            <text>Modifier le client</text>
+                        }
+                    </h5>
+                    <button type="button" class="btn-close" @onclick="CloseModal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Nom <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" @bind="_editingClient.Nom" 
+                                   disabled="@_isViewMode" />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Prénom <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" @bind="_editingClient.Prenom" 
+                                   disabled="@_isViewMode" />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Téléphone</label>
+                            <input type="tel" class="form-control" @bind="_editingClient.Telephone" 
+                                   disabled="@_isViewMode" />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Email</label>
+                            <input type="email" class="form-control" @bind="_editingClient.Email" 
+                                   disabled="@_isViewMode" />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Date de naissance</label>
+                            <input type="text" class="form-control" @bind="_editingClient.DateNaissance" 
+                                   placeholder="JJ/MM/AAAA" disabled="@_isViewMode" />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Date de création</label>
+                            <input type="text" class="form-control" 
+                                   value="@(_editingClient.DateCreation.Length > 0 ? _editingClient.DateCreation : "Nouveau")" 
+                                   disabled />
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">Adresse</label>
+                            <input type="text" class="form-control" @bind="_editingClient.Adresse" 
+                                   disabled="@_isViewMode" />
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">Notes</label>
+                            <textarea class="form-control" rows="3" @bind="_editingClient.Notes" 
+                                      disabled="@_isViewMode"></textarea>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="CloseModal">
+                        @(_isViewMode ? "Fermer" : "Annuler")
+                    </button>
+                    @if (!_isViewMode)
+                    {
+                        <button type="button" class="btn btn-gold" @onclick="SaveClientAsync" disabled="@_isSaving">
+                            @if (_isSaving)
+                            {
+                                <span class="spinner-border spinner-border-sm me-1"></span>
+                            }
+                            <i class="bi bi-check-lg me-1"></i> Enregistrer
+                        </button>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@* Modal de confirmation de suppression *@
+@if (_showDeleteConfirm)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title text-danger">
+                        <i class="bi bi-exclamation-triangle me-2"></i>
+                        Confirmer la suppression
+                    </h5>
+                    <button type="button" class="btn-close" @onclick="() => _showDeleteConfirm = false"></button>
+                </div>
+                <div class="modal-body">
+                    <p>Êtes-vous sûr de vouloir supprimer le client <strong>@_clientToDelete?.NomComplet</strong> ?</p>
+                    <p class="text-muted mb-0">Cette action est irréversible.</p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="() => _showDeleteConfirm = false">
+                        Annuler
+                    </button>
+                    <button type="button" class="btn btn-danger" @onclick="DeleteClientAsync" disabled="@_isSaving">
+                        @if (_isSaving)
+                        {
+                            <span class="spinner-border spinner-border-sm me-1"></span>
+                        }
+                        <i class="bi bi-trash me-1"></i> Supprimer
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+<style>
+    .text-gold { color: #d4a574 !important; }
+    .spinner-border.text-gold { color: #d4a574 !important; }
+    .btn-gold {
+        background-color: #d4a574;
+        border-color: #d4a574;
+        color: white;
+    }
+    .btn-gold:hover {
+        background-color: #c49464;
+        border-color: #c49464;
+        color: white;
+    }
+    .spin {
+        animation: spin 1s linear infinite;
+    }
+    @@keyframes spin {
+        from { transform: rotate(0deg); }
+        to { transform: rotate(360deg); }
+    }
+</style>
+
+@code {
+    private bool _isAuthenticated = false;
+    private bool _isLoading = true;
+    private bool _isSaving = false;
+    
+    private List<Client> _clients = new();
+    private List<Client> _filteredClients = new();
+    
+    private string _searchTerm = string.Empty;
+    private string _alertMessage = string.Empty;
+    private string _alertClass = "alert-info";
+    private string _sortColumn = "Nom";
+    private bool _sortAscending = true;
+
+    // Modal
+    private bool _showModal = false;
+    private bool _isViewMode = false;
+    private Client _editingClient = new();
+    
+    // Suppression
+    private bool _showDeleteConfirm = false;
+    private Client? _clientToDelete;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await AuthService.InitializeAsync();
+            
+            if (!AuthService.IsSignedIn || !AuthService.CanRead)
+            {
+                NavigationManager.NavigateTo("/login");
+                return;
+            }
+
+            _isAuthenticated = true;
+            StateHasChanged();
+            
+            await LoadClientsAsync();
+        }
+    }
+
+    private async Task LoadClientsAsync()
+    {
+        _isLoading = true;
+        StateHasChanged();
+
+        try
+        {
+            _clients = await SheetsService.GetClientsAsync();
+            FilterAndSortClients();
+        }
+        catch (Exception ex)
+        {
+            ShowAlert($"Erreur lors du chargement : {ex.Message}", "alert-danger");
+        }
+        finally
+        {
+            _isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task RefreshDataAsync()
+    {
+        await LoadClientsAsync();
+    }
+
+    private void FilterAndSortClients()
+    {
+        var query = _clients.AsQueryable();
+
+        // Filtre par recherche
+        if (!string.IsNullOrWhiteSpace(_searchTerm))
+        {
+            var term = _searchTerm.ToLower();
+            query = query.Where(c =>
+                c.Nom.ToLower().Contains(term) ||
+                c.Prenom.ToLower().Contains(term) ||
+                c.Telephone.ToLower().Contains(term) ||
+                c.Email.ToLower().Contains(term)
+            );
+        }
+
+        // Tri
+        _filteredClients = _sortColumn switch
+        {
+            "Nom" => _sortAscending 
+                ? query.OrderBy(c => c.NomComplet).ToList()
+                : query.OrderByDescending(c => c.NomComplet).ToList(),
+            _ => query.ToList()
+        };
+    }
+
+    private void FilterClients()
+    {
+        FilterAndSortClients();
+        StateHasChanged();
+    }
+
+    private void SortBy(string column)
+    {
+        if (_sortColumn == column)
+            _sortAscending = !_sortAscending;
+        else
+        {
+            _sortColumn = column;
+            _sortAscending = true;
+        }
+        FilterAndSortClients();
+        StateHasChanged();
+    }
+
+    private void ClearSearch()
+    {
+        _searchTerm = string.Empty;
+        FilterClients();
+    }
+
+    private void ShowAddModal()
+    {
+        _editingClient = new Client();
+        _isViewMode = false;
+        _showModal = true;
+    }
+
+    private void ShowEditModal(Client client)
+    {
+        _editingClient = new Client
+        {
+            RowIndex = client.RowIndex,
+            Id = client.Id,
+            Nom = client.Nom,
+            Prenom = client.Prenom,
+            Telephone = client.Telephone,
+            Email = client.Email,
+            DateNaissance = client.DateNaissance,
+            Adresse = client.Adresse,
+            Notes = client.Notes,
+            DateCreation = client.DateCreation
+        };
+        _isViewMode = false;
+        _showModal = true;
+    }
+
+    private void ShowViewModal(Client client)
+    {
+        _editingClient = client;
+        _isViewMode = true;
+        _showModal = true;
+    }
+
+    private void CloseModal()
+    {
+        _showModal = false;
+        _editingClient = new();
+    }
+
+    private async Task SaveClientAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_editingClient.Nom) || string.IsNullOrWhiteSpace(_editingClient.Prenom))
+        {
+            ShowAlert("Le nom et le prénom sont obligatoires.", "alert-warning");
+            return;
+        }
+
+        _isSaving = true;
+        StateHasChanged();
+
+        try
+        {
+            if (_editingClient.RowIndex == 0)
+            {
+                await SheetsService.AddClientAsync(_editingClient);
+                ShowAlert("Client ajouté avec succès.", "alert-success");
+            }
+            else
+            {
+                await SheetsService.UpdateClientAsync(_editingClient);
+                ShowAlert("Client modifié avec succès.", "alert-success");
+            }
+
+            CloseModal();
+            await LoadClientsAsync();
+        }
+        catch (Exception ex)
+        {
+            ShowAlert($"Erreur : {ex.Message}", "alert-danger");
+        }
+        finally
+        {
+            _isSaving = false;
+            StateHasChanged();
+        }
+    }
+
+    private void ShowDeleteConfirm(Client client)
+    {
+        _clientToDelete = client;
+        _showDeleteConfirm = true;
+    }
+
+    private async Task DeleteClientAsync()
+    {
+        if (_clientToDelete == null) return;
+
+        _isSaving = true;
+        StateHasChanged();
+
+        try
+        {
+            await SheetsService.DeleteClientAsync(_clientToDelete.RowIndex);
+            ShowAlert("Client supprimé avec succès.", "alert-success");
+            _showDeleteConfirm = false;
+            _clientToDelete = null;
+            await LoadClientsAsync();
+        }
+        catch (Exception ex)
+        {
+            ShowAlert($"Erreur : {ex.Message}", "alert-danger");
+        }
+        finally
+        {
+            _isSaving = false;
+            StateHasChanged();
+        }
+    }
+
+    private void ShowAlert(string message, string alertClass)
+    {
+        _alertMessage = message;
+        _alertClass = alertClass;
+    }
+}

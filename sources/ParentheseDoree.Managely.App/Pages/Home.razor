@@ -1,16 +1,305 @@
-﻿@*
+@*
     =============================================================================
-    Home.razor - Page d'accueil de l'application
+    Home.razor - Page d'accueil avec tableau de bord
     =============================================================================
 *@
 
-@* 
-    Directive de routage : définit l'URL de cette page.
-    "/" = page d'accueil (racine du site)
-*@
 @page "/"
 
-@* Contenu de la page - À personnaliser selon les besoins *@
-<h1>Bienvenue sur Managely</h1>
+@using ParentheseDoree.Managely.App.Services
+@using ParentheseDoree.Managely.App.Models
 
-<p>Application de gestion pour le Centre Esthétique Parenthèse Dorée.</p>
+@inject GoogleAuthService AuthService
+@inject GoogleSheetsService SheetsService
+@inject BrowserLoggerService Logger
+@inject NavigationManager NavigationManager
+
+@implements IDisposable
+
+<PageTitle>Accueil - Managely</PageTitle>
+
+@if (!_isAuthenticated)
+{
+    <div class="text-center py-5">
+        <div class="spinner-border text-gold" role="status">
+            <span class="visually-hidden">Chargement...</span>
+        </div>
+    </div>
+}
+else
+{
+    @* En-tête de bienvenue *@
+    <div class="welcome-section mb-4">
+        <div class="row align-items-center">
+            <div class="col-md-8">
+                <h1 class="h3 mb-2">
+                    <i class="bi bi-sun me-2"></i>
+                    Bonjour, @(AuthService.CurrentUser?.GivenName ?? AuthService.CurrentUser?.Name) !
+                </h1>
+                <p class="text-muted mb-0">
+                    Bienvenue sur Managely, votre outil de gestion clientèle.
+                </p>
+            </div>
+            <div class="col-md-4 text-md-end mt-3 mt-md-0">
+                <span class="badge @(AuthService.CanWrite ? "bg-success" : "bg-warning text-dark") fs-6">
+                    <i class="bi @(AuthService.CanWrite ? "bi-pencil-fill" : "bi-eye-fill") me-1"></i>
+                    @(AuthService.CanWrite ? "Mode Écriture" : "Mode Lecture")
+                </span>
+            </div>
+        </div>
+    </div>
+
+    @* Statistiques rapides *@
+    @if (_isLoading)
+    {
+        <div class="text-center py-5">
+            <div class="spinner-border text-gold" role="status">
+                <span class="visually-hidden">Chargement des données...</span>
+            </div>
+            <p class="mt-3 text-muted">Chargement des données...</p>
+        </div>
+    }
+    else
+    {
+        <div class="row g-4 mb-4">
+            @* Carte Clients *@
+            <div class="col-md-6 col-lg-4">
+                <div class="card stat-card h-100 border-0 shadow-sm" @onclick='() => NavigationManager.NavigateTo("/clients")'>
+                    <div class="card-body">
+                        <div class="d-flex align-items-center">
+                            <div class="stat-icon bg-primary-subtle text-primary">
+                                <i class="bi bi-people-fill"></i>
+                            </div>
+                            <div class="ms-3">
+                                <h2 class="mb-0 fw-bold">@_totalClients</h2>
+                                <p class="text-muted mb-0">Clients</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card-footer bg-transparent border-0 pt-0">
+                        <small class="text-primary">
+                            Voir tous les clients <i class="bi bi-arrow-right"></i>
+                        </small>
+                    </div>
+                </div>
+            </div>
+
+            @* Carte Prestations *@
+            <div class="col-md-6 col-lg-4">
+                <div class="card stat-card h-100 border-0 shadow-sm" @onclick='() => NavigationManager.NavigateTo("/prestations")'>
+                    <div class="card-body">
+                        <div class="d-flex align-items-center">
+                            <div class="stat-icon bg-success-subtle text-success">
+                                <i class="bi bi-calendar-check-fill"></i>
+                            </div>
+                            <div class="ms-3">
+                                <h2 class="mb-0 fw-bold">@_totalPrestations</h2>
+                                <p class="text-muted mb-0">Prestations</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card-footer bg-transparent border-0 pt-0">
+                        <small class="text-success">
+                            Voir toutes les prestations <i class="bi bi-arrow-right"></i>
+                        </small>
+                    </div>
+                </div>
+            </div>
+
+            @* Carte Chiffre d'affaires *@
+            <div class="col-md-6 col-lg-4">
+                <div class="card stat-card h-100 border-0 shadow-sm">
+                    <div class="card-body">
+                        <div class="d-flex align-items-center">
+                            <div class="stat-icon bg-warning-subtle text-warning">
+                                <i class="bi bi-currency-euro"></i>
+                            </div>
+                            <div class="ms-3">
+                                <h2 class="mb-0 fw-bold">@_totalRevenue.ToString("N0") €</h2>
+                                <p class="text-muted mb-0">Chiffre d'affaires</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card-footer bg-transparent border-0 pt-0">
+                        <small class="text-warning">
+                            Total des prestations
+                        </small>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        @* Actions rapides *@
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-transparent border-0 pt-3">
+                <h5 class="mb-0">
+                    <i class="bi bi-lightning-fill text-gold me-2"></i>
+                    Actions rapides
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="row g-3">
+                    @if (AuthService.CanWrite)
+                    {
+                        <div class="col-md-6 col-lg-3">
+                            <button class="btn btn-outline-primary w-100 py-3" @onclick='() => NavigationManager.NavigateTo("/clients")'>
+                                <i class="bi bi-person-plus fs-4 d-block mb-2"></i>
+                                Nouveau client
+                            </button>
+                        </div>
+                        <div class="col-md-6 col-lg-3">
+                            <button class="btn btn-outline-success w-100 py-3" @onclick='() => NavigationManager.NavigateTo("/prestations")'>
+                                <i class="bi bi-plus-circle fs-4 d-block mb-2"></i>
+                                Nouvelle prestation
+                            </button>
+                        </div>
+                    }
+                    <div class="col-md-6 col-lg-3">
+                        <button class="btn btn-outline-secondary w-100 py-3" @onclick='() => NavigationManager.NavigateTo("/clients")'>
+                            <i class="bi bi-search fs-4 d-block mb-2"></i>
+                            Rechercher un client
+                        </button>
+                    </div>
+                    <div class="col-md-6 col-lg-3">
+                        <button class="btn btn-outline-info w-100 py-3" @onclick="RefreshDataAsync">
+                            <i class="bi bi-arrow-clockwise fs-4 d-block mb-2 @(_isRefreshing ? "spin" : "")"></i>
+                            Actualiser
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        @* Message d'erreur *@
+        @if (!string.IsNullOrEmpty(_errorMessage))
+        {
+            <div class="alert alert-warning mt-4" role="alert">
+                <i class="bi bi-exclamation-triangle me-2"></i>
+                @_errorMessage
+            </div>
+        }
+    }
+}
+
+<style>
+    .text-gold {
+        color: #d4a574 !important;
+    }
+
+    .spinner-border.text-gold {
+        color: #d4a574 !important;
+    }
+
+    .stat-card {
+        cursor: pointer;
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    .stat-card:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15) !important;
+    }
+
+    .stat-icon {
+        width: 60px;
+        height: 60px;
+        border-radius: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.5rem;
+    }
+
+    .welcome-section {
+        padding: 1.5rem;
+        background: linear-gradient(135deg, rgba(212, 165, 116, 0.1) 0%, rgba(196, 148, 100, 0.1) 100%);
+        border-radius: 1rem;
+    }
+
+    .spin {
+        animation: spin 1s linear infinite;
+    }
+
+    @@keyframes spin {
+        from { transform: rotate(0deg); }
+        to { transform: rotate(360deg); }
+    }
+</style>
+
+@code {
+    private bool _isAuthenticated = false;
+    private bool _isLoading = true;
+    private bool _isRefreshing = false;
+    private string? _errorMessage = null;
+
+    private int _totalClients = 0;
+    private int _totalPrestations = 0;
+    private decimal _totalRevenue = 0;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await AuthService.InitializeAsync();
+            
+            if (!AuthService.IsSignedIn || !AuthService.CanRead)
+            {
+                NavigationManager.NavigateTo("/login");
+                return;
+            }
+
+            _isAuthenticated = true;
+            StateHasChanged();
+            
+            await LoadDataAsync();
+        }
+    }
+
+    private async Task LoadDataAsync()
+    {
+        _isLoading = true;
+        _errorMessage = null;
+        StateHasChanged();
+
+        try
+        {
+            var clientsTask = SheetsService.GetClientsAsync();
+            var prestationsTask = SheetsService.GetPrestationsAsync();
+
+            await Task.WhenAll(clientsTask, prestationsTask);
+
+            var clients = await clientsTask;
+            var prestations = await prestationsTask;
+
+            _totalClients = clients.Count;
+            _totalPrestations = prestations.Count;
+            _totalRevenue = prestations.Sum(p => p.Prix);
+        }
+        catch (Exception ex)
+        {
+            await Logger.ErrorAsync(LogCategory.API, "Erreur chargement données accueil", new { error = ex.Message });
+            _errorMessage = "Impossible de charger les données. Vérifiez votre connexion.";
+        }
+        finally
+        {
+            _isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task RefreshDataAsync()
+    {
+        _isRefreshing = true;
+        StateHasChanged();
+        
+        await LoadDataAsync();
+        
+        _isRefreshing = false;
+        StateHasChanged();
+    }
+
+    public void Dispose()
+    {
+        // Cleanup si nécessaire
+    }
+}

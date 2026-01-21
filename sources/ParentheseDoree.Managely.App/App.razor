@@ -1,36 +1,20 @@
-﻿@*
-    =============================================================================
-    App.razor - Composant racine de l'application Blazor
-    =============================================================================
-*@
-
-@* 
-    Le composant Router gère la navigation dans l'application.
-    AppAssembly indique où chercher les pages (composants avec @page).
-*@
 <Router AppAssembly="@typeof(App).Assembly">
-
-    @* 
-        Found : Affiché quand une route correspond à une page existante.
-        Context="routeData" : Contient les informations de la route (URL, paramètres).
-    *@
     <Found Context="routeData">
-        @* RouteView affiche la page correspondante avec le layout par défaut (MainLayout) *@
-        <RouteView RouteData="@routeData" DefaultLayout="@typeof(MainLayout)" />
+        <RouteView RouteData="@routeData" DefaultLayout="@typeof(Layouts.MainLayout)" />
     </Found>
-
-    @* 
-        NotFound : Affiché quand l'URL ne correspond à aucune page.
-        Équivalent d'une page d'erreur 404.
-    *@
     <NotFound>
-        @* Définit le titre de l'onglet du navigateur *@
-        <PageTitle>Page non trouvée</PageTitle>
-        
-        @* Utilise le même layout pour garder une apparence cohérente *@
-        <LayoutView Layout="@typeof(MainLayout)">
-            <p role="alert">Désolé, cette page n'existe pas.</p>
+        <PageTitle>Page non trouvée - Managely</PageTitle>
+        <LayoutView Layout="@typeof(Layouts.MainLayout)">
+            <div class="container py-5 text-center">
+                <h1 class="display-4 text-muted">
+                    <i class="bi bi-exclamation-triangle"></i>
+                </h1>
+                <h2 class="h4 mb-4">Page non trouvée</h2>
+                <p class="text-muted mb-4">La page que vous recherchez n'existe pas.</p>
+                <a href="/" class="btn btn-gold">
+                    <i class="bi bi-house me-2"></i>Retour à l'accueil
+                </a>
+            </div>
         </LayoutView>
     </NotFound>
-
 </Router>
