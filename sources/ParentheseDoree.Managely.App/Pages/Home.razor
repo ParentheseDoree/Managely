@@ -64,7 +64,7 @@ else
         <div class="row g-4 mb-4">
             @* Carte Clients *@
             <div class="col-md-6 col-lg-4">
-                <div class="card stat-card h-100 border-0 shadow-sm" @onclick='() => NavigationManager.NavigateTo("/clients")'>
+                <div class="card stat-card h-100 border-0 shadow-sm" @onclick='() => NavigationManager.NavigateTo("clients")'>
                     <div class="card-body">
                         <div class="d-flex align-items-center">
                             <div class="stat-icon bg-primary-subtle text-primary">
@@ -86,7 +86,7 @@ else
 
             @* Carte Prestations *@
             <div class="col-md-6 col-lg-4">
-                <div class="card stat-card h-100 border-0 shadow-sm" @onclick='() => NavigationManager.NavigateTo("/prestations")'>
+                <div class="card stat-card h-100 border-0 shadow-sm" @onclick='() => NavigationManager.NavigateTo("prestations")'>
                     <div class="card-body">
                         <div class="d-flex align-items-center">
                             <div class="stat-icon bg-success-subtle text-success">
@@ -142,20 +142,20 @@ else
                     @if (AuthService.CanWrite)
                     {
                         <div class="col-md-6 col-lg-3">
-                            <button class="btn btn-outline-primary w-100 py-3" @onclick='() => NavigationManager.NavigateTo("/clients")'>
+                            <button class="btn btn-outline-primary w-100 py-3" @onclick='() => NavigationManager.NavigateTo("clients")'>
                                 <i class="bi bi-person-plus fs-4 d-block mb-2"></i>
                                 Nouveau client
                             </button>
                         </div>
                         <div class="col-md-6 col-lg-3">
-                            <button class="btn btn-outline-success w-100 py-3" @onclick='() => NavigationManager.NavigateTo("/prestations")'>
+                            <button class="btn btn-outline-success w-100 py-3" @onclick='() => NavigationManager.NavigateTo("prestations")'>
                                 <i class="bi bi-plus-circle fs-4 d-block mb-2"></i>
                                 Nouvelle prestation
                             </button>
                         </div>
                     }
                     <div class="col-md-6 col-lg-3">
-                        <button class="btn btn-outline-secondary w-100 py-3" @onclick='() => NavigationManager.NavigateTo("/clients")'>
+                        <button class="btn btn-outline-secondary w-100 py-3" @onclick='() => NavigationManager.NavigateTo("clients")'>
                             <i class="bi bi-search fs-4 d-block mb-2"></i>
                             Rechercher un client
                         </button>
@@ -244,7 +244,7 @@ else
             
             if (!AuthService.IsSignedIn || !AuthService.CanRead)
             {
-                NavigationManager.NavigateTo("/login");
+                NavigationManager.NavigateTo("login");
                 return;
             }
 

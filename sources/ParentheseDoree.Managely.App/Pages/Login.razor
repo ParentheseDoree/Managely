@@ -193,7 +193,7 @@
             // Si déjà connecté avec les bonnes permissions, rediriger
             if (AuthService.IsSignedIn && AuthService.CanRead)
             {
-                NavigationManager.NavigateTo("/");
+                NavigationManager.NavigateTo("");
                 return;
             }
 
@@ -229,7 +229,7 @@
                     // Connexion réussie avec accès, rediriger vers l'accueil
                     await Logger.SuccessAsync(LogCategory.AUTH, "Connexion réussie avec accès", 
                         new { email = user.Email, permission = permission.ToString() });
-                    NavigationManager.NavigateTo("/");
+                    NavigationManager.NavigateTo("");
                 }
             }
             else

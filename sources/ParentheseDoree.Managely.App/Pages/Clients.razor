@@ -353,7 +353,7 @@ else
             
             if (!AuthService.IsSignedIn || !AuthService.CanRead)
             {
-                NavigationManager.NavigateTo("/login");
+                NavigationManager.NavigateTo("login");
                 return;
             }
 

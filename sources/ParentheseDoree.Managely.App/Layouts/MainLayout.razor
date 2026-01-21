@@ -10,7 +10,7 @@
         @* Barre de navigation *@
         <nav class="navbar navbar-expand-lg navbar-dark bg-gradient-gold">
             <div class="container-fluid">
-                <a class="navbar-brand d-flex align-items-center" href="/">
+                <a class="navbar-brand d-flex align-items-center" href="">
                     <i class="bi bi-gem me-2"></i>
                     <span class="fw-bold">Managely</span>
                 </a>
@@ -22,17 +22,17 @@
                 <div class="collapse navbar-collapse" id="navbarNav">
                     <ul class="navbar-nav me-auto">
                         <li class="nav-item">
-                            <NavLink class="nav-link" href="/" Match="NavLinkMatch.All">
+                            <NavLink class="nav-link" href="" Match="NavLinkMatch.All">
                                 <i class="bi bi-house me-1"></i> Accueil
                             </NavLink>
                         </li>
                         <li class="nav-item">
-                            <NavLink class="nav-link" href="/clients">
+                            <NavLink class="nav-link" href="clients">
                                 <i class="bi bi-people me-1"></i> Clients
                             </NavLink>
                         </li>
                         <li class="nav-item">
-                            <NavLink class="nav-link" href="/prestations">
+                            <NavLink class="nav-link" href="prestations">
                                 <i class="bi bi-calendar-check me-1"></i> Prestations
                             </NavLink>
                         </li>
@@ -119,6 +119,6 @@ else
     private async Task SignOutAsync()
     {
         await AuthService.SignOutAsync();
-        NavigationManager.NavigateTo("/login", forceLoad: true);
+        NavigationManager.NavigateTo("login", forceLoad: true);
     }
 }
