@@ -40,13 +40,6 @@ jobs:
       - name: Build en mode Release
         run: dotnet publish sources/ParentheseDoree.Managely.App/ParentheseDoree.Managely.App.csproj -c Release -o release --nologo
 
-      # Modification du base href pour GitHub Pages
-      # Le nom du repository est utilisé automatiquement
-      - name: Mise à jour du base href
-        run: |
-          REPO_NAME=$(echo "${{ github.repository }}" | cut -d'/' -f2)
-          sed -i 's|<base href="/" />|<base href="/'"$REPO_NAME"'/" />|g' release/wwwroot/index.html
-
       # Ajouter .nojekyll pour éviter que GitHub ignore les fichiers _framework
       - name: Créer .nojekyll
         run: touch release/wwwroot/.nojekyll
