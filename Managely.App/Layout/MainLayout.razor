@@ -1,0 +1,82 @@
+﻿@inherits LayoutComponentBase
+@using Microsoft.AspNetCore.Components.WebAssembly.Authentication
+@using Microsoft.AspNetCore.Components.Authorization
+@inject NavigationManager Navigation
+
+<AuthorizeView>
+    <Authorized>
+        <!-- Navbar responsive -->
+        <nav class="navbar navbar-expand-lg navbar-light bg-white shadow-sm sticky-top">
+            <div class="container">
+                <!-- Logo -->
+                <a class="navbar-brand d-flex align-items-center" href="/">
+                    <i class="bi bi-grid-3x3-gap-fill me-2"></i>
+                    <span>Managely</span>
+                </a>
+
+                <!-- Toggle button mobile -->
+                <button class="navbar-toggler border-0" type="button" data-bs-toggle="collapse" 
+                        data-bs-target="#navbarContent" aria-controls="navbarContent" 
+                        aria-expanded="false" aria-label="Menu">
+                    <span class="navbar-toggler-icon"></span>
+                </button>
+
+                <!-- Contenu de la navbar -->
+                <div class="collapse navbar-collapse" id="navbarContent">
+                    <ul class="navbar-nav ms-auto align-items-lg-center">
+                        <!-- Menu utilisateur -->
+                        <li class="nav-item dropdown">
+                            <a class="nav-link dropdown-toggle d-flex align-items-center gap-2 py-2" 
+                               href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                                @{
+                                    var picture = context.User.FindFirst("picture")?.Value;
+                                    var email = context.User.FindFirst("email")?.Value ?? context.User.Identity?.Name;
+                                    var name = context.User.FindFirst("name")?.Value ?? email;
+                                }
+                                @if (!string.IsNullOrEmpty(picture))
+                                {
+                                    <img src="@picture" alt="Avatar" class="user-avatar" referrerpolicy="no-referrer" />
+                                }
+                                else
+                                {
+                                    <div class="user-avatar bg-primary text-white d-flex align-items-center justify-content-center">
+                                        <i class="bi bi-person-fill"></i>
+                                    </div>
+                                }
+                                <span class="d-none d-lg-inline user-email">@email</span>
+                            </a>
+                            <ul class="dropdown-menu dropdown-menu-end">
+                                <li class="px-3 py-2 border-bottom">
+                                    <div class="fw-semibold">@name</div>
+                                    <small class="text-muted">@email</small>
+                                </li>
+                                <li><hr class="dropdown-divider d-lg-none"></li>
+                                <li>
+                                    <button class="dropdown-item text-danger d-flex align-items-center gap-2" @onclick="BeginLogout">
+                                        <i class="bi bi-box-arrow-right"></i>
+                                        Se déconnecter
+                                    </button>
+                                </li>
+                            </ul>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </nav>
+
+        <!-- Contenu principal -->
+        <main>
+            @Body
+        </main>
+    </Authorized>
+    <NotAuthorized>
+        @Body
+    </NotAuthorized>
+</AuthorizeView>
+
+@code {
+    private void BeginLogout()
+    {
+        Navigation.NavigateToLogout("authentication/logout");
+    }
+}

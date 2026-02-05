@@ -1,0 +1,79 @@
+﻿@page "/authentication/{action}"
+@layout LoginLayout
+@using Microsoft.AspNetCore.Components.WebAssembly.Authentication
+
+<RemoteAuthenticatorView Action="@Action">
+    <LogInFailed>
+        <div class="login-page">
+            <div class="container">
+                <div class="row justify-content-center align-items-center min-vh-100">
+                    <div class="col-11 col-sm-8 col-md-6 col-lg-4">
+                        <div class="card border-0 shadow-lg" style="border-radius: 20px;">
+                            <div class="card-body p-4 p-md-5 text-center">
+                                <div class="text-danger mb-3">
+                                    <i class="bi bi-exclamation-circle-fill" style="font-size: 3rem;"></i>
+                                </div>
+                                <h4 class="mb-3">Échec de la connexion</h4>
+                                <p class="text-muted mb-4">
+                                    La connexion a échoué. Veuillez réessayer.
+                                </p>
+                                <a href="/login" class="btn btn-primary">
+                                    <i class="bi bi-arrow-left me-2"></i>
+                                    Retour à la connexion
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </LogInFailed>
+    <LogOut>
+        <div class="login-page">
+            <div class="container">
+                <div class="row justify-content-center align-items-center min-vh-100">
+                    <div class="col-11 col-sm-8 col-md-6 col-lg-4">
+                        <div class="card border-0 shadow-lg" style="border-radius: 20px;">
+                            <div class="card-body p-4 p-md-5 text-center">
+                                <div class="spinner-border text-primary mb-3" role="status">
+                                    <span class="visually-hidden">Déconnexion...</span>
+                                </div>
+                                <h4 class="mb-3">Déconnexion en cours</h4>
+                                <p class="text-muted mb-0">Veuillez patienter...</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </LogOut>
+    <LogOutSucceeded>
+        <div class="login-page">
+            <div class="container">
+                <div class="row justify-content-center align-items-center min-vh-100">
+                    <div class="col-11 col-sm-8 col-md-6 col-lg-4">
+                        <div class="card border-0 shadow-lg" style="border-radius: 20px;">
+                            <div class="card-body p-4 p-md-5 text-center">
+                                <div class="text-success mb-3">
+                                    <i class="bi bi-check-circle-fill" style="font-size: 3rem;"></i>
+                                </div>
+                                <h4 class="mb-3">Déconnexion réussie</h4>
+                                <p class="text-muted mb-4">
+                                    Vous avez été déconnecté avec succès.
+                                </p>
+                                <a href="/login" class="btn btn-primary">
+                                    <i class="bi bi-box-arrow-in-right me-2"></i>
+                                    Se reconnecter
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </LogOutSucceeded>
+</RemoteAuthenticatorView>
+
+@code {
+    [Parameter] public string? Action { get; set; }
+}
