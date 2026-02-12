@@ -116,8 +116,15 @@ else
                                     @if (_bilan.MontantCartesFideliteUtilisees > 0)
                                     {
                                         <tr>
-                                            <td class="ps-3"><i class="bi bi-heart text-muted me-1"></i>Par cartes fidélité <small class="text-muted">(services offerts)</small></td>
+                                            <td class="ps-3"><i class="bi bi-heart text-muted me-1"></i>Par cartes fidélité <small class="text-muted">(10 passages)</small></td>
                                             <td class="text-end fw-bold text-warning">-@FormatEuro(_bilan.MontantCartesFideliteUtilisees)</td>
+                                        </tr>
+                                    }
+                                    @if (_bilan.MontantBonsFideliteUtilises > 0)
+                                    {
+                                        <tr>
+                                            <td class="ps-3"><i class="bi bi-cake2 text-muted me-1"></i>Par bons anniversaire <small class="text-muted">(offerts)</small></td>
+                                            <td class="text-end fw-bold text-warning">-@FormatEuro(_bilan.MontantBonsFideliteUtilises)</td>
                                         </tr>
                                     }
                                 }
@@ -161,13 +168,24 @@ else
                             </tbody>
                         </table>
 
-                        @* Info fidélité *@
-                        @if (_bilan.MontantCartesFideliteUtilisees > 0)
+                        @* Info services offerts *@
+                        @if (_bilan.MontantCartesFideliteUtilisees > 0 || _bilan.MontantBonsFideliteUtilises > 0 || _bilan.BonsAnniversaireEmis > 0)
                         {
-                            <div class="alert alert-warning small py-2 px-3 mt-3 mb-0">
-                                <i class="bi bi-info-circle me-1"></i>
-                                <strong>@FormatEuro(_bilan.MontantCartesFideliteUtilisees)</strong> de services offerts via fidélité
-                                <br /><span class="text-muted">Déjà déduit des encaissements ci-contre.</span>
+                            <div class="alert alert-info small py-2 px-3 mt-3 mb-0">
+                                <i class="bi bi-info-circle me-1"></i><strong>Services offerts (fidélité)</strong>
+                                @if (_bilan.MontantCartesFideliteUtilisees > 0)
+                                {
+                                    <div class="ms-2">Cartes fidélité utilisées : <strong>@FormatEuro(_bilan.MontantCartesFideliteUtilisees)</strong></div>
+                                }
+                                @if (_bilan.MontantBonsFideliteUtilises > 0)
+                                {
+                                    <div class="ms-2">Bons anniversaire utilisés : <strong>@FormatEuro(_bilan.MontantBonsFideliteUtilises)</strong></div>
+                                }
+                                @if (_bilan.BonsAnniversaireEmis > 0)
+                                {
+                                    <div class="ms-2">Bons anniversaire émis : <strong>@FormatEuro(_bilan.BonsAnniversaireEmis)</strong></div>
+                                }
+                                <span class="text-muted">Déjà déduit des encaissements.</span>
                             </div>
                         }
                     </div>
@@ -262,8 +280,15 @@ else
                             @if (_repartition.CartesFidelite > 0)
                             {
                                 <div class="d-flex justify-content-between mb-1">
-                                    <span><i class="bi bi-circle-fill me-1" style="font-size:0.5rem;color:#f0ad4e;"></i>Bons fidélité</span>
+                                    <span><i class="bi bi-circle-fill me-1" style="font-size:0.5rem;color:#f0ad4e;"></i>Cartes fidélité</span>
                                     <strong>@_repartition.CartesFidelite.ToString("N2") €</strong>
+                                </div>
+                            }
+                            @if (_repartition.BonsAnniversaire > 0)
+                            {
+                                <div class="d-flex justify-content-between mb-1">
+                                    <span><i class="bi bi-circle-fill me-1" style="font-size:0.5rem;color:#e85d75;"></i>Bons anniversaire</span>
+                                    <strong>@_repartition.BonsAnniversaire.ToString("N2") €</strong>
                                 </div>
                             }
                         </div>
@@ -486,7 +511,7 @@ else
     private int _mois = DateTime.Now.Month;
     private DashboardStats _stats = new();
     private BilanFinancier? _bilan;
-    private Dictionary<int, decimal> _revenusMensuels = new();
+    private RevenusMensuelsDetail _revenusMensuels = new();
     private Dictionary<string, decimal> _repartitionPaiements = new();
     private RepartitionCA? _repartition;
     private List<(string Nom, int Count, decimal Total)> _topPrestations = [];
@@ -570,24 +595,28 @@ else
     private void BuildCharts()
     {
         var ci = System.Globalization.CultureInfo.InvariantCulture;
-        var dataValues = Enumerable.Range(1, 12)
-            .Select(m => _revenusMensuels.GetValueOrDefault(m, 0));
         var labels = string.Join(",", MoisLabels.Select(m => "\"" + m + "\""));
-        var data = string.Join(",", dataValues.Select(v => v.ToString(ci)));
 
-        // Barres colorées : le mois sélectionné est doré, les autres gris clair
-        var bgColors = string.Join(",", Enumerable.Range(1, 12).Select(m =>
-            m == _mois ? "\"rgba(212,165,116,0.8)\"" : "\"rgba(200,200,200,0.3)\""));
-        var borderColors = string.Join(",", Enumerable.Range(1, 12).Select(m =>
-            m == _mois ? "\"#d4a574\"" : "\"rgba(200,200,200,0.5)\""));
+        // Stacked bar chart : chaque mois décomposé par catégorie avec couleurs distinctes
+        string DataSet(string label, Dictionary<int, decimal> dict, string color)
+        {
+            var vals = string.Join(",", Enumerable.Range(1, 12).Select(m => dict.GetValueOrDefault(m, 0).ToString(ci)));
+            return $"{{\"label\":\"{label}\",\"data\":[{vals}],\"backgroundColor\":\"{color}\",\"borderRadius\":3}}";
+        }
+
+        var datasets = new List<string>
+        {
+            DataSet("Prestations", _revenusMensuels.Prestations, "#d4a574"),
+            DataSet("Produits", _revenusMensuels.Produits, "#6c9bd2"),
+            DataSet("Cartes cadeaux", _revenusMensuels.CartesVendues, "#5cb85c"),
+            DataSet("Fidélité / Bons", _revenusMensuels.Fidelite, "#f0ad4e")
+        };
 
         _chartCaMensuel = "{\"type\":\"bar\",\"data\":{\"labels\":["
-            + labels + "],\"datasets\":[{\"label\":\"CA\",\"data\":["
-            + data + "],\"backgroundColor\":[" + bgColors + "],"
-            + "\"borderColor\":[" + borderColors + "],\"borderWidth\":1,\"borderRadius\":6}]},"
+            + labels + "],\"datasets\":[" + string.Join(",", datasets) + "]},"
             + "\"options\":{\"responsive\":true,\"maintainAspectRatio\":false,"
-            + "\"plugins\":{\"legend\":{\"display\":false}},"
-            + "\"scales\":{\"y\":{\"beginAtZero\":true}}}}";
+            + "\"plugins\":{\"legend\":{\"display\":true,\"position\":\"top\"}},"
+            + "\"scales\":{\"x\":{\"stacked\":true},\"y\":{\"stacked\":true,\"beginAtZero\":true}}}}";
 
         // Graphique répartition avec 4 catégories et couleurs distinctes
         var rLabels = new List<string>();
@@ -603,7 +632,9 @@ else
             if (_repartition.CartesVendues > 0)
             { rLabels.Add("\"Cartes cadeaux\""); rData.Add(_repartition.CartesVendues.ToString(ci)); rColors.Add("\"#5cb85c\""); }
             if (_repartition.CartesFidelite > 0)
-            { rLabels.Add("\"Bons fidélité\""); rData.Add(_repartition.CartesFidelite.ToString(ci)); rColors.Add("\"#f0ad4e\""); }
+            { rLabels.Add("\"Cartes fidélité\""); rData.Add(_repartition.CartesFidelite.ToString(ci)); rColors.Add("\"#f0ad4e\""); }
+            if (_repartition.BonsAnniversaire > 0)
+            { rLabels.Add("\"Bons anniversaire\""); rData.Add(_repartition.BonsAnniversaire.ToString(ci)); rColors.Add("\"#e85d75\""); }
         }
 
         _chartRepartition = "{\"type\":\"doughnut\",\"data\":{\"labels\":["

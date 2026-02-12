@@ -83,35 +83,43 @@ public sealed class FinanceService
             c.Type == "achat" && EstDansPeriode(c.DateCreation, mois, annee)).ToList();
         var caCartesVendues = cartesVenduesPeriode.Sum(c => c.MontantInitial);
 
-        // Calculer l'utilisation des cartes cadeaux avec distinction achat/fidélité
+        // Calculer l'utilisation des cartes/bons avec distinction par type
         var carteFideliteGuids = cartes.Where(c => c.Type == "fidelite").Select(c => c.Guid).ToHashSet();
-        var carteAchatGuids = cartes.Where(c => c.Type == "achat").Select(c => c.Guid).ToHashSet();
+        var bonFideliteGuids = cartes.Where(c => c.Type == "bon_fidelite").Select(c => c.Guid).ToHashSet();
 
         decimal cartesAchatUtilisees = 0;
         decimal cartesFideliteUtilisees = 0;
+        decimal bonsFideliteUtilises = 0;
 
         foreach (var p in passagesPeriode)
         {
             if (p.Paiements.Count > 0)
             {
-                // Mode multi-paiement
                 foreach (var pay in p.Paiements.Where(pay => pay.Mode == "Carte cadeau"))
                 {
                     if (carteFideliteGuids.Contains(pay.CarteCadeauGuid))
                         cartesFideliteUtilisees += pay.Montant;
+                    else if (bonFideliteGuids.Contains(pay.CarteCadeauGuid))
+                        bonsFideliteUtilises += pay.Montant;
                     else
                         cartesAchatUtilisees += pay.Montant;
                 }
             }
             else if (!string.IsNullOrEmpty(p.CarteCadeauGuid) && p.MontantCarteUtilisee > 0)
             {
-                // Mode simple
                 if (carteFideliteGuids.Contains(p.CarteCadeauGuid))
                     cartesFideliteUtilisees += p.MontantCarteUtilisee;
+                else if (bonFideliteGuids.Contains(p.CarteCadeauGuid))
+                    bonsFideliteUtilises += p.MontantCarteUtilisee;
                 else
                     cartesAchatUtilisees += p.MontantCarteUtilisee;
             }
         }
+
+        // Bons anniversaire émis ce mois
+        var bonsEmis = cartes.Where(c =>
+            c.Type == "bon_fidelite" && EstDansPeriode(c.DateCreation, mois, annee))
+            .Sum(c => c.MontantInitial);
 
         return new BilanFinancier
         {
@@ -122,6 +130,8 @@ public sealed class FinanceService
             CaCartesVendues = caCartesVendues,
             MontantCartesAchatUtilisees = cartesAchatUtilisees,
             MontantCartesFideliteUtilisees = cartesFideliteUtilisees,
+            MontantBonsFideliteUtilises = bonsFideliteUtilises,
+            BonsAnniversaireEmis = bonsEmis,
             ChargesAchatsProduits = charges,
             RecettesAjustements = recettesAjust,
             DepensesAjustements = depensesAjust,
@@ -130,20 +140,36 @@ public sealed class FinanceService
     }
 
     /// <summary>
-    /// Revenus mensuels pour une année donnée.
+    /// Revenus mensuels détaillés par catégorie pour une année donnée (pour le graphique stacked).
     /// </summary>
-    public async Task<Dictionary<int, decimal>> GetRevenusMensuelsAsync(int annee)
+    public async Task<RevenusMensuelsDetail> GetRevenusMensuelsAsync(int annee)
     {
         var passages = await _passages.GetAllAsync();
-        var result = Enumerable.Range(1, 12).ToDictionary(m => m, _ => 0m);
+        var cartes = await _cartes.GetAllAsync();
+
+        var detail = new RevenusMensuelsDetail();
 
         foreach (var p in passages)
         {
             if (TryParseDate(p.Date, out var date) && date.Year == annee)
-                result[date.Month] += p.Total;
+            {
+                detail.Prestations[date.Month] += p.Prestations.Sum(pr => pr.Prix);
+                detail.Produits[date.Month] += p.ProduitsVendus.Sum(pv => pv.Quantite * pv.PrixUnitaire);
+            }
         }
 
-        return result;
+        foreach (var c in cartes)
+        {
+            if (TryParseDate(c.DateCreation, out var date) && date.Year == annee)
+            {
+                if (c.Type == "achat")
+                    detail.CartesVendues[date.Month] += c.MontantInitial;
+                else if (c.Type is "fidelite" or "bon_fidelite")
+                    detail.Fidelite[date.Month] += c.MontantInitial;
+            }
+        }
+
+        return detail;
     }
 
     /// <summary>
@@ -168,12 +194,17 @@ public sealed class FinanceService
             .Where(c => c.Type == "fidelite" && EstDansPeriode(c.DateCreation, mois, annee))
             .Sum(c => c.MontantInitial);
 
+        var bonsAnniv = cartes
+            .Where(c => c.Type == "bon_fidelite" && EstDansPeriode(c.DateCreation, mois, annee))
+            .Sum(c => c.MontantInitial);
+
         return new RepartitionCA
         {
             Prestations = totalPrestations,
             Produits = totalProduits,
             CartesVendues = cartesVendues,
-            CartesFidelite = cartesFidelite
+            CartesFidelite = cartesFidelite,
+            BonsAnniversaire = bonsAnniv
         };
     }
 
@@ -313,11 +344,17 @@ public class BilanFinancier
     /// <summary>Montant payé par cartes cadeaux ACHAT sur les passages de la période.</summary>
     public decimal MontantCartesAchatUtilisees { get; set; }
 
-    /// <summary>Montant payé par cartes FIDÉLITÉ sur les passages de la période (services offerts).</summary>
+    /// <summary>Montant payé par cartes FIDÉLITÉ (10 passages) sur les passages de la période.</summary>
     public decimal MontantCartesFideliteUtilisees { get; set; }
 
-    /// <summary>Total de tous les paiements par cartes (achat + fidélité). Pour affichage.</summary>
-    public decimal MontantCartesTotalUtilisees => MontantCartesAchatUtilisees + MontantCartesFideliteUtilisees;
+    /// <summary>Montant payé par bons ANNIVERSAIRE sur les passages de la période.</summary>
+    public decimal MontantBonsFideliteUtilises { get; set; }
+
+    /// <summary>Montant total des bons anniversaire émis sur la période (pour info).</summary>
+    public decimal BonsAnniversaireEmis { get; set; }
+
+    /// <summary>Total de tous les paiements par cartes/bons (achat + fidélité + bons anniv).</summary>
+    public decimal MontantCartesTotalUtilisees => MontantCartesAchatUtilisees + MontantCartesFideliteUtilisees + MontantBonsFideliteUtilises;
 
     // ═══ CHARGES ═══
     /// <summary>Coûts d'achat des produits (réapprovisionnements).</summary>
@@ -341,6 +378,7 @@ public class BilanFinancier
     public decimal TotalEncaissements => CaPrestations + CaProduits + CaCartesVendues
                                         - MontantCartesAchatUtilisees
                                         - MontantCartesFideliteUtilisees
+                                        - MontantBonsFideliteUtilises
                                         + RecettesAjustements;
 
     /// <summary>Total des charges et dépenses réelles.</summary>
@@ -354,7 +392,7 @@ public class BilanFinancier
 
     /// <summary>CA réel encaissé (hors ajustements).</summary>
     public decimal CaReel => CaPrestations + CaProduits + CaCartesVendues
-                            - MontantCartesAchatUtilisees - MontantCartesFideliteUtilisees;
+                            - MontantCartesAchatUtilisees - MontantCartesFideliteUtilisees - MontantBonsFideliteUtilises;
 }
 
 /// <summary>Répartition du CA par catégorie.</summary>
@@ -364,6 +402,16 @@ public class RepartitionCA
     public decimal Produits { get; set; }
     public decimal CartesVendues { get; set; }
     public decimal CartesFidelite { get; set; }
-    public decimal Total => Prestations + Produits + CartesVendues + CartesFidelite;
+    public decimal BonsAnniversaire { get; set; }
+    public decimal Total => Prestations + Produits + CartesVendues + CartesFidelite + BonsAnniversaire;
     public bool HasData => Total > 0;
+}
+
+/// <summary>Revenus mensuels détaillés par catégorie (pour graphique stacked bar).</summary>
+public class RevenusMensuelsDetail
+{
+    public Dictionary<int, decimal> Prestations { get; } = Enumerable.Range(1, 12).ToDictionary(m => m, _ => 0m);
+    public Dictionary<int, decimal> Produits { get; } = Enumerable.Range(1, 12).ToDictionary(m => m, _ => 0m);
+    public Dictionary<int, decimal> CartesVendues { get; } = Enumerable.Range(1, 12).ToDictionary(m => m, _ => 0m);
+    public Dictionary<int, decimal> Fidelite { get; } = Enumerable.Range(1, 12).ToDictionary(m => m, _ => 0m);
 }

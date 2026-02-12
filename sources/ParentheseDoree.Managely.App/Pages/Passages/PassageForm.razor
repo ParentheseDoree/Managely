@@ -39,22 +39,9 @@
 @if (_fideliteCarte != null)
 {
     <div class="alert alert-success">
-        @{
-            var isBonAnniv = _fideliteCarte.Type == "bon_fidelite";
-            var montantStr = _fideliteCarte.MontantInitial.ToString("N2");
-        }
-        @if (isBonAnniv)
-        {
-            <i class="bi bi-cake2 me-2"></i>
-            <strong>Bon anniversaire généré !</strong> <span>Valeur : @montantStr €</span>
-            <br /><small class="text-muted">@_fideliteCarte.Origine</small>
-        }
-        else
-        {
-            <i class="bi bi-gift me-2"></i>
-            <strong>Carte fidélité générée !</strong> <span>Valeur : @montantStr €</span>
-            <br /><small class="text-muted">@_fideliteCarte.Origine</small>
-        }
+        <i class="bi bi-gift me-2"></i>
+        <strong>Carte fidélité générée !</strong> Valeur : @_fideliteCarte.MontantInitial.ToString("N2") €
+        <br /><small class="text-muted">@_fideliteCarte.Origine</small>
     </div>
 }
 
@@ -272,16 +259,16 @@
                         <option value="Espèces">💵 Espèces</option>
                         <option value="Chèque">📝 Chèque</option>
                         <option value="Virement">🏦 Virement</option>
-                        <option value="Carte cadeau">🎁 Carte cadeau</option>
+                        <option value="Carte cadeau">🎁 Carte / Bon</option>
                     </select>
                     <small class="text-muted d-block mt-1">
-                        <i class="bi bi-info-circle me-1"></i>Cliquez sur « Fractionner » pour utiliser plusieurs moyens de paiement.
+                        <i class="bi bi-info-circle me-1"></i>Cliquez sur « Fractionner » pour combiner plusieurs moyens de paiement.
                     </small>
                 }
                 else
                 {
                     <label class="form-label small fw-semibold">Paiement fractionné</label>
-                    <small class="text-muted d-block mb-2">Répartissez le total entre plusieurs modes de paiement.</small>
+                    <small class="text-muted d-block mb-2">Répartissez le total entre plusieurs moyens de paiement.</small>
                     @for (int i = 0; i < _passage.Paiements.Count; i++)
                     {
                         var idx = i;
@@ -289,7 +276,7 @@
                         <div class="border rounded p-2 mb-2 bg-light">
                             <div class="d-flex justify-content-between align-items-center mb-1">
                                 <label class="form-label small mb-0 fw-semibold">Paiement @(idx + 1)</label>
-                                <button class="btn btn-sm text-danger p-0" @onclick="() => RemovePaiement(idx)" title="Supprimer ce paiement"><i class="bi bi-x-lg"></i></button>
+                                <button class="btn btn-sm text-danger p-0" @onclick="() => RemovePaiement(idx)" title="Supprimer"><i class="bi bi-x-lg"></i></button>
                             </div>
                             <div class="row g-2">
                                 <div class="col-6">
@@ -300,7 +287,7 @@
                                         <option value="Espèces">💵 Espèces</option>
                                         <option value="Chèque">📝 Chèque</option>
                                         <option value="Virement">🏦 Virement</option>
-                                        <option value="Carte cadeau">🎁 Carte cadeau</option>
+                                        <option value="Carte cadeau">🎁 Carte / Bon</option>
                                     </select>
                                 </div>
                                 <div class="col-6">
@@ -311,35 +298,36 @@
                             @if (pay.Mode == "Carte cadeau")
                             {
                                 <div class="mt-2">
-                                    <label class="form-label small text-muted mb-0">Carte cadeau à utiliser</label>
+                                    <label class="form-label small text-muted mb-0">Carte / Bon à utiliser</label>
                                     @if (_cartesClient.Count == 0)
                                     {
                                         <div class="alert alert-warning small py-1 px-2 mb-0 mt-1">
                                             <i class="bi bi-exclamation-triangle me-1"></i>
                                             @(string.IsNullOrEmpty(_passage.ClientGuid)
                                                 ? "Sélectionnez d'abord un client."
-                                                : "Ce client n'a aucune carte cadeau active.")
+                                                : "Aucune carte ou bon actif pour ce client.")
                                         </div>
                                     }
                                     else
                                     {
                                         <select class="form-select form-select-sm" @bind="pay.CarteCadeauGuid">
-                                            <option value="">-- Sélectionner une carte --</option>
+                                            <option value="">-- Choisir --</option>
                                             @foreach (var cc in GetCartesDisponiblesPour(idx))
                                             {
-                                                <option value="@cc.Guid">
-                                                    @(cc.Type == "fidelite" ? "🎖️ Fidélité" : "🎁 Achat") — Solde : @cc.SoldeRestant.ToString("N2")€
-                                                    @(string.IsNullOrEmpty(cc.Origine) ? "" : $" ({cc.Origine})")
-                                                </option>
+                                                <option value="@cc.Guid">@FormatCarteLabel(cc)</option>
                                             }
                                         </select>
                                         @if (GetSelectedPayCarte(pay.CarteCadeauGuid) is CarteCadeau selCarte)
                                         {
-                                            <small class="text-muted">
-                                                <i class="bi bi-wallet2 me-1"></i>Solde disponible : <strong>@selCarte.SoldeRestant.ToString("N2") €</strong>
+                                            <small class="text-muted d-block mt-1">
+                                                <i class="bi bi-wallet2 me-1"></i>Solde : <strong>@selCarte.SoldeRestant.ToString("N2") €</strong>
                                                 @if (pay.Montant > selCarte.SoldeRestant)
                                                 {
-                                                    <span class="text-danger ms-1"><i class="bi bi-exclamation-triangle"></i> Montant supérieur au solde !</span>
+                                                    <span class="text-danger ms-1"><i class="bi bi-exclamation-triangle"></i> Dépasse le solde</span>
+                                                }
+                                                @if (selCarte.Type == "bon_fidelite")
+                                                {
+                                                    <span class="text-info d-block"><i class="bi bi-info-circle me-1"></i>Utilisable si prestations &gt; 60 €</span>
                                                 }
                                             </small>
                                         }
@@ -366,29 +354,27 @@
                     }
                 }
 
-                @* Carte cadeau (mode simple) *@
+                @* Carte / Bon (mode simple) *@
                 @if (_passage.Paiements.Count == 0 && _passage.ModePaiement == "Carte cadeau")
                 {
                     <div class="mt-3">
-                        <label class="form-label small fw-semibold">Carte cadeau à utiliser</label>
+                        <label class="form-label small fw-semibold">Carte / Bon à utiliser</label>
                         @if (_cartesClient.Count == 0)
                         {
                             <div class="alert alert-warning small py-1 px-2 mb-0">
                                 <i class="bi bi-exclamation-triangle me-1"></i>
                                 @(string.IsNullOrEmpty(_passage.ClientGuid)
                                     ? "Sélectionnez d'abord un client."
-                                    : "Ce client n'a aucune carte cadeau active.")
+                                    : "Aucune carte ou bon actif pour ce client.")
                             </div>
                         }
                         else
                         {
                             <select class="form-select form-select-sm" @bind="_passage.CarteCadeauGuid">
-                                <option value="">-- Sélectionner une carte --</option>
+                                <option value="">-- Choisir --</option>
                                 @foreach (var cc in _cartesClient)
                                 {
-                                    <option value="@cc.Guid">
-                                        @(cc.Type == "fidelite" ? "🎖️ Fidélité" : "🎁 Achat") — Solde : @cc.SoldeRestant.ToString("N2")€ (@cc.DateCreation)
-                                    </option>
+                                    <option value="@cc.Guid">@FormatCarteLabel(cc)</option>
                                 }
                             </select>
                             <div class="mt-2">
@@ -397,11 +383,15 @@
                                        @bind="_passage.MontantCarteUtilisee" step="0.01" min="0" />
                                 @if (_selectedCarte != null)
                                 {
-                                    <small class="text-muted">
-                                        <i class="bi bi-wallet2 me-1"></i>Solde actuel : <strong>@_selectedCarte.SoldeRestant.ToString("N2") €</strong>
+                                    <small class="text-muted d-block mt-1">
+                                        <i class="bi bi-wallet2 me-1"></i>Solde : <strong>@_selectedCarte.SoldeRestant.ToString("N2") €</strong>
                                         @if (_passage.MontantCarteUtilisee > _selectedCarte.SoldeRestant)
                                         {
-                                            <span class="text-danger ms-1"><i class="bi bi-exclamation-triangle"></i> Dépasse le solde !</span>
+                                            <span class="text-danger ms-1"><i class="bi bi-exclamation-triangle"></i> Dépasse le solde</span>
+                                        }
+                                        @if (_selectedCarte.Type == "bon_fidelite")
+                                        {
+                                            <span class="text-info d-block"><i class="bi bi-info-circle me-1"></i>Utilisable si prestations &gt; 60 €</span>
                                         }
                                     </small>
                                 }
@@ -526,6 +516,10 @@
     {
         if (!string.IsNullOrEmpty(_passage.ClientGuid))
         {
+            // Générer le bon anniversaire s'il n'existe pas encore (disponible immédiatement)
+            await FideliteSvc.VerifierBonAnniversaireAsync(_passage.ClientGuid);
+
+            // Charger toutes les cartes/bons utilisables
             var cartes = await CarteSvc.GetByClientAsync(_passage.ClientGuid);
             _cartesClient = cartes.Where(c => c.EstUtilisable).ToList();
         }
@@ -575,6 +569,14 @@
             if (mode != "Carte cadeau")
                 _passage.Paiements[idx].CarteCadeauGuid = "";
         }
+    }
+
+    /// <summary>Formatte le label d'une carte/bon pour les listes déroulantes.</summary>
+    private static string FormatCarteLabel(CarteCadeau cc)
+    {
+        var icon = cc.Type switch { "fidelite" => "Fidélité", "bon_fidelite" => "Bon Anniv.", _ => "Carte cadeau" };
+        var detail = string.IsNullOrEmpty(cc.Origine) ? "" : $" — {cc.Origine}";
+        return $"{icon} : {cc.SoldeRestant:N2}€{detail}";
     }
 
     /// <summary>Retourne la carte cadeau sélectionnée pour un GUID donné.</summary>
@@ -714,18 +716,13 @@
                 await CarteSvc.UtiliserAsync(_passage.CarteCadeauGuid, _passage.MontantCarteUtilisee);
             }
 
-            // Vérifier fidélité (10 passages) et bon anniversaire
+            // Vérifier fidélité (10 passages → carte fidélité automatique)
             _fideliteCarte = await FideliteSvc.VerifierEtGenererAsync(_passage.ClientGuid);
-            var bonAnniv = await FideliteSvc.VerifierBonAnniversaireAsync(_passage.ClientGuid);
 
-            if (_fideliteCarte == null && bonAnniv == null)
+            if (_fideliteCarte == null)
                 Nav.NavigateTo("passages");
             else
-            {
-                if (bonAnniv != null && _fideliteCarte == null)
-                    _fideliteCarte = bonAnniv; // Afficher le bon anniversaire
                 StateHasChanged();
-            }
         }
         catch (Exception ex) { _alert = $"Erreur: {ex.Message}"; _alertType = "danger"; }
         finally { _saving = false; StateHasChanged(); }
