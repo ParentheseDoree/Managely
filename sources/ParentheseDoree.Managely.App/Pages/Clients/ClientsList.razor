@@ -189,11 +189,11 @@ else
         var q = _all.AsEnumerable();
         if (!string.IsNullOrWhiteSpace(_search))
         {
-            var t = _search.ToLower();
-            q = q.Where(c => c.Nom.Contains(t, StringComparison.OrdinalIgnoreCase)
-                || c.Prenom.Contains(t, StringComparison.OrdinalIgnoreCase)
+            var t = Client.SupprimerAccents(_search.ToLower());
+            q = q.Where(c => Client.SupprimerAccents(c.Nom).Contains(t, StringComparison.OrdinalIgnoreCase)
+                || Client.SupprimerAccents(c.Prenom).Contains(t, StringComparison.OrdinalIgnoreCase)
                 || c.NumeroTelephone.Contains(t, StringComparison.OrdinalIgnoreCase)
-                || c.Email.Contains(t, StringComparison.OrdinalIgnoreCase));
+                || Client.SupprimerAccents(c.Email).Contains(t, StringComparison.OrdinalIgnoreCase));
         }
         _filtered = _sort switch
         {

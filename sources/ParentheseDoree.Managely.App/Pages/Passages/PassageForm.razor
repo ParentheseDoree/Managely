@@ -39,8 +39,22 @@
 @if (_fideliteCarte != null)
 {
     <div class="alert alert-success">
-        <i class="bi bi-gift me-2"></i>
-        <strong>Carte fidélité générée !</strong> Valeur : @_fideliteCarte.MontantInitial.ToString("N2") € (@_fideliteCarte.Origine)
+        @{
+            var isBonAnniv = _fideliteCarte.Type == "bon_fidelite";
+            var montantStr = _fideliteCarte.MontantInitial.ToString("N2");
+        }
+        @if (isBonAnniv)
+        {
+            <i class="bi bi-cake2 me-2"></i>
+            <strong>Bon anniversaire généré !</strong> <span>Valeur : @montantStr €</span>
+            <br /><small class="text-muted">@_fideliteCarte.Origine</small>
+        }
+        else
+        {
+            <i class="bi bi-gift me-2"></i>
+            <strong>Carte fidélité générée !</strong> <span>Valeur : @montantStr €</span>
+            <br /><small class="text-muted">@_fideliteCarte.Origine</small>
+        }
     </div>
 }
 
@@ -482,11 +496,11 @@
         }
         else
         {
-            var t = _clientSearchText.ToLower();
+            var t = Client.SupprimerAccents(_clientSearchText.ToLower());
             _clientsFiltered = _clients
-                .Where(c => c.NomComplet.Contains(t, StringComparison.OrdinalIgnoreCase)
+                .Where(c => Client.SupprimerAccents(c.NomComplet).Contains(t, StringComparison.OrdinalIgnoreCase)
                     || c.NumeroTelephone.Contains(t, StringComparison.OrdinalIgnoreCase)
-                    || c.Email.Contains(t, StringComparison.OrdinalIgnoreCase))
+                    || Client.SupprimerAccents(c.Email).Contains(t, StringComparison.OrdinalIgnoreCase))
                 .Take(20)
                 .ToList();
         }
@@ -673,26 +687,45 @@
                     await MouvementSvc.EnregistrerSortieAsync(pv.ProduitId, pv.Quantite, pv.PrixUnitaire, _passage.Guid);
             }
 
-            // Utiliser les cartes cadeaux
+            // Utiliser les cartes cadeaux / bons fidélité
+            var totalPrestationsPassage = _passage.Prestations.Sum(p => p.Prix);
             if (_passage.Paiements.Count > 0)
             {
                 foreach (var pay in _passage.Paiements.Where(p => p.Mode == "Carte cadeau" && !string.IsNullOrEmpty(p.CarteCadeauGuid)))
                 {
+                    // Vérifier si c'est un bon anniversaire → prestations cabine > 60€ requises
+                    var cartePay = _cartesClient.FirstOrDefault(c => c.Guid == pay.CarteCadeauGuid);
+                    if (cartePay?.Type == "bon_fidelite" && totalPrestationsPassage <= 60m)
+                    {
+                        _alert = "Le bon anniversaire est utilisable uniquement sur un passage avec plus de 60 € de prestations cabine.";
+                        _alertType = "warning"; _saving = false; StateHasChanged(); return;
+                    }
                     await CarteSvc.UtiliserAsync(pay.CarteCadeauGuid, pay.Montant);
                 }
             }
             else if (!string.IsNullOrEmpty(_passage.CarteCadeauGuid) && _passage.MontantCarteUtilisee > 0)
             {
+                var cartePay = _cartesClient.FirstOrDefault(c => c.Guid == _passage.CarteCadeauGuid);
+                if (cartePay?.Type == "bon_fidelite" && totalPrestationsPassage <= 60m)
+                {
+                    _alert = "Le bon anniversaire est utilisable uniquement sur un passage avec plus de 60 € de prestations cabine.";
+                    _alertType = "warning"; _saving = false; StateHasChanged(); return;
+                }
                 await CarteSvc.UtiliserAsync(_passage.CarteCadeauGuid, _passage.MontantCarteUtilisee);
             }
 
-            // Vérifier fidélité
+            // Vérifier fidélité (10 passages) et bon anniversaire
             _fideliteCarte = await FideliteSvc.VerifierEtGenererAsync(_passage.ClientGuid);
+            var bonAnniv = await FideliteSvc.VerifierBonAnniversaireAsync(_passage.ClientGuid);
 
-            if (_fideliteCarte == null)
+            if (_fideliteCarte == null && bonAnniv == null)
                 Nav.NavigateTo("passages");
             else
+            {
+                if (bonAnniv != null && _fideliteCarte == null)
+                    _fideliteCarte = bonAnniv; // Afficher le bon anniversaire
                 StateHasChanged();
+            }
         }
         catch (Exception ex) { _alert = $"Erreur: {ex.Message}"; _alertType = "danger"; }
         finally { _saving = false; StateHasChanged(); }

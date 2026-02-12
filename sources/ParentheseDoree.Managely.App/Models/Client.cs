@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 
@@ -22,6 +23,69 @@ public class Client
     public string HachageIntegrite { get; set; } = string.Empty;
 
     public string NomComplet => $"{Prenom} {Nom}".Trim();
+
+    /// <summary>
+    /// Applique le formatage automatique sur Nom, Prénom et Téléphone.
+    /// - Nom : MAJUSCULES (NOM-NOM pour composés)
+    /// - Prénom : Première lettre majuscule (Prenom-Prenom pour composés)
+    /// - Téléphone : XX XX XX XX XX
+    /// </summary>
+    public void AppliquerFormatage()
+    {
+        Nom = FormaterNom(Nom);
+        Prenom = FormaterPrenom(Prenom);
+        NumeroTelephone = FormaterTelephone(NumeroTelephone);
+    }
+
+    /// <summary>NOM en MAJUSCULES, tirets sans espaces.</summary>
+    private static string FormaterNom(string nom)
+    {
+        if (string.IsNullOrWhiteSpace(nom)) return nom;
+        nom = nom.Trim();
+        // Séparer par tiret, mettre chaque partie en majuscules, rejoindre
+        var parts = nom.Split(['-', ' '], StringSplitOptions.RemoveEmptyEntries);
+        return string.Join("-", parts.Select(p => p.ToUpper()));
+    }
+
+    /// <summary>Prénom avec majuscule initiale, tirets sans espaces pour composés.</summary>
+    private static string FormaterPrenom(string prenom)
+    {
+        if (string.IsNullOrWhiteSpace(prenom)) return prenom;
+        prenom = prenom.Trim();
+        var parts = prenom.Split(['-', ' '], StringSplitOptions.RemoveEmptyEntries);
+        return string.Join("-", parts.Select(p =>
+            p.Length <= 1 ? p.ToUpper() : char.ToUpper(p[0]) + p[1..].ToLower()));
+    }
+
+    /// <summary>Téléphone formaté en XX XX XX XX XX.</summary>
+    private static string FormaterTelephone(string tel)
+    {
+        if (string.IsNullOrWhiteSpace(tel)) return tel;
+        // Ne garder que les chiffres
+        var digits = new string(tel.Where(char.IsDigit).ToArray());
+        if (digits.Length == 0) return tel;
+        // Gérer le +33
+        if (digits.StartsWith("33") && digits.Length == 11)
+            digits = "0" + digits[2..];
+        // Formater par paires
+        if (digits.Length == 10)
+            return $"{digits[..2]} {digits[2..4]} {digits[4..6]} {digits[6..8]} {digits[8..10]}";
+        return tel.Trim(); // Retourner tel quel si longueur inattendue
+    }
+
+    /// <summary>Supprime les accents d'une chaîne (pour la recherche).</summary>
+    public static string SupprimerAccents(string text)
+    {
+        if (string.IsNullOrEmpty(text)) return text;
+        var normalized = text.Normalize(NormalizationForm.FormD);
+        var sb = new StringBuilder(normalized.Length);
+        foreach (var c in normalized)
+        {
+            if (UnicodeCategory.NonSpacingMark != CharUnicodeInfo.GetUnicodeCategory(c))
+                sb.Append(c);
+        }
+        return sb.ToString().Normalize(NormalizationForm.FormC);
+    }
 
     /// <summary>
     /// Génère un nouveau GUID pour le client.

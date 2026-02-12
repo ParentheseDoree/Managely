@@ -147,11 +147,12 @@ public sealed class FinanceService
     }
 
     /// <summary>
-    /// Répartition du CA par type (prestations / produits) pour un mois/année.
+    /// Répartition du CA par type (prestations / produits / cartes vendues / fidélité) pour un mois/année.
     /// </summary>
-    public async Task<(decimal Prestations, decimal Produits)> GetRepartitionAsync(int mois, int annee)
+    public async Task<RepartitionCA> GetRepartitionAsync(int mois, int annee)
     {
         var passages = await _passages.GetAllAsync();
+        var cartes = await _cartes.GetAllAsync();
 
         var filtered = passages.Where(p => EstDansPeriode(p.Date, mois, annee)).ToList();
 
@@ -159,7 +160,21 @@ public sealed class FinanceService
         var totalProduits = filtered.Sum(p =>
             p.ProduitsVendus.Sum(pv => pv.Quantite * pv.PrixUnitaire));
 
-        return (totalPrestations, totalProduits);
+        var cartesVendues = cartes
+            .Where(c => c.Type == "achat" && EstDansPeriode(c.DateCreation, mois, annee))
+            .Sum(c => c.MontantInitial);
+
+        var cartesFidelite = cartes
+            .Where(c => c.Type == "fidelite" && EstDansPeriode(c.DateCreation, mois, annee))
+            .Sum(c => c.MontantInitial);
+
+        return new RepartitionCA
+        {
+            Prestations = totalPrestations,
+            Produits = totalProduits,
+            CartesVendues = cartesVendues,
+            CartesFidelite = cartesFidelite
+        };
     }
 
     /// <summary>
@@ -340,4 +355,15 @@ public class BilanFinancier
     /// <summary>CA réel encaissé (hors ajustements).</summary>
     public decimal CaReel => CaPrestations + CaProduits + CaCartesVendues
                             - MontantCartesAchatUtilisees - MontantCartesFideliteUtilisees;
+}
+
+/// <summary>Répartition du CA par catégorie.</summary>
+public class RepartitionCA
+{
+    public decimal Prestations { get; set; }
+    public decimal Produits { get; set; }
+    public decimal CartesVendues { get; set; }
+    public decimal CartesFidelite { get; set; }
+    public decimal Total => Prestations + Produits + CartesVendues + CartesFidelite;
+    public bool HasData => Total > 0;
 }

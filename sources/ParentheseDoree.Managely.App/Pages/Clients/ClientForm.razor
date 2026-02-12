@@ -135,6 +135,9 @@
         if (string.IsNullOrWhiteSpace(_client.Nom) || string.IsNullOrWhiteSpace(_client.Prenom))
         { _alert = "Nom et prénom obligatoires."; _alertType = "warning"; return; }
 
+        // Formatage automatique : NOM en MAJUSCULES, Prénom capitalisé, tél XX XX XX XX XX
+        _client.AppliquerFormatage();
+
         _saving = true; _conflitDetecte = false; StateHasChanged();
         try
         {

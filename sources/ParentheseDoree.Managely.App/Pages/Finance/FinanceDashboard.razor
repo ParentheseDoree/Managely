@@ -201,7 +201,7 @@ else
                             {
                                 <div class="d-flex justify-content-between">
                                     <span class="text-muted">Panier moyen</span>
-                                    <strong class="text-gold">@(_bilan.CaPassages / _bilan.NbPassages).ToString("N2") €</strong>
+                                    <strong class="text-gold">@((_bilan.CaPassages / _bilan.NbPassages).ToString("N2")) €</strong>
                                 </div>
                             }
                         </div>
@@ -227,10 +227,10 @@ else
         <div class="col-lg-4">
             <div class="card border-0 shadow-sm">
                 <div class="card-header pt-3">
-                    <h5 class="mb-0"><i class="bi bi-pie-chart me-2 text-gold"></i>Répartition @MoisLabels[_mois - 1] @_annee</h5>
+                    <h5 class="mb-0"><i class="bi bi-pie-chart me-2 text-gold"></i>Répartition CA — @MoisLabels[_mois - 1] @_annee</h5>
                 </div>
                 <div class="card-body">
-                    @if (_totalPrestations == 0 && _totalProduits == 0)
+                    @if (_repartition == null || !_repartition.HasData)
                     {
                         <div class="text-center py-5 text-muted">
                             <i class="bi bi-pie-chart fs-1 d-block mb-2 opacity-25"></i>
@@ -241,10 +241,33 @@ else
                     {
                         <ChartComponent CanvasId="chart-repartition" ConfigJson="@_chartRepartition" Height="250" />
                     }
-                    <div class="text-center mt-3 small">
-                        <span class="text-success"><i class="bi bi-circle-fill me-1" style="font-size:0.5rem;color:#d4a574 !important;"></i>Prestations: @_totalPrestations.ToString("N2") €</span>
-                        <span class="ms-3 text-primary"><i class="bi bi-circle-fill me-1" style="font-size:0.5rem;color:#6c9bd2 !important;"></i>Produits: @_totalProduits.ToString("N2") €</span>
-                    </div>
+                    @if (_repartition != null)
+                    {
+                        <div class="mt-3 small">
+                            <div class="d-flex justify-content-between mb-1">
+                                <span><i class="bi bi-circle-fill me-1" style="font-size:0.5rem;color:#d4a574;"></i>Prestations</span>
+                                <strong>@_repartition.Prestations.ToString("N2") €</strong>
+                            </div>
+                            <div class="d-flex justify-content-between mb-1">
+                                <span><i class="bi bi-circle-fill me-1" style="font-size:0.5rem;color:#6c9bd2;"></i>Produits</span>
+                                <strong>@_repartition.Produits.ToString("N2") €</strong>
+                            </div>
+                            @if (_repartition.CartesVendues > 0)
+                            {
+                                <div class="d-flex justify-content-between mb-1">
+                                    <span><i class="bi bi-circle-fill me-1" style="font-size:0.5rem;color:#5cb85c;"></i>Cartes cadeaux</span>
+                                    <strong>@_repartition.CartesVendues.ToString("N2") €</strong>
+                                </div>
+                            }
+                            @if (_repartition.CartesFidelite > 0)
+                            {
+                                <div class="d-flex justify-content-between mb-1">
+                                    <span><i class="bi bi-circle-fill me-1" style="font-size:0.5rem;color:#f0ad4e;"></i>Bons fidélité</span>
+                                    <strong>@_repartition.CartesFidelite.ToString("N2") €</strong>
+                                </div>
+                            }
+                        </div>
+                    }
                 </div>
             </div>
         </div>
@@ -465,7 +488,7 @@ else
     private BilanFinancier? _bilan;
     private Dictionary<int, decimal> _revenusMensuels = new();
     private Dictionary<string, decimal> _repartitionPaiements = new();
-    private decimal _totalPrestations, _totalProduits;
+    private RepartitionCA? _repartition;
     private List<(string Nom, int Count, decimal Total)> _topPrestations = [];
     private List<(string Nom, int Quantite, decimal Total)> _topProduits = [];
     private List<AjustementFinancier> _ajustementsPeriode = [];
@@ -513,9 +536,7 @@ else
             _revenusMensuels = await FinanceSvc.GetRevenusMensuelsAsync(_annee);
 
             // Répartition filtrée par mois+année
-            var (prest, prod) = await FinanceSvc.GetRepartitionAsync(_mois, _annee);
-            _totalPrestations = prest;
-            _totalProduits = prod;
+            _repartition = await FinanceSvc.GetRepartitionAsync(_mois, _annee);
 
             // Répartition paiements du mois
             _repartitionPaiements = await FinanceSvc.GetRepartitionPaiementsAsync(_mois, _annee);
@@ -568,12 +589,28 @@ else
             + "\"plugins\":{\"legend\":{\"display\":false}},"
             + "\"scales\":{\"y\":{\"beginAtZero\":true}}}}";
 
-        var pVal = _totalPrestations.ToString(ci);
-        var prVal = _totalProduits.ToString(ci);
-        _chartRepartition = "{\"type\":\"doughnut\",\"data\":{\"labels\":"
-            + "[\"Prestations\",\"Produits\"],\"datasets\":[{\"data\":["
-            + pVal + "," + prVal + "],\"backgroundColor\":[\"#d4a574\",\"#6c9bd2\"],"
-            + "\"borderWidth\":2,\"borderColor\":[\"#fff\",\"#fff\"]}]},"
+        // Graphique répartition avec 4 catégories et couleurs distinctes
+        var rLabels = new List<string>();
+        var rData = new List<string>();
+        var rColors = new List<string>();
+
+        if (_repartition != null)
+        {
+            if (_repartition.Prestations > 0)
+            { rLabels.Add("\"Prestations\""); rData.Add(_repartition.Prestations.ToString(ci)); rColors.Add("\"#d4a574\""); }
+            if (_repartition.Produits > 0)
+            { rLabels.Add("\"Produits\""); rData.Add(_repartition.Produits.ToString(ci)); rColors.Add("\"#6c9bd2\""); }
+            if (_repartition.CartesVendues > 0)
+            { rLabels.Add("\"Cartes cadeaux\""); rData.Add(_repartition.CartesVendues.ToString(ci)); rColors.Add("\"#5cb85c\""); }
+            if (_repartition.CartesFidelite > 0)
+            { rLabels.Add("\"Bons fidélité\""); rData.Add(_repartition.CartesFidelite.ToString(ci)); rColors.Add("\"#f0ad4e\""); }
+        }
+
+        _chartRepartition = "{\"type\":\"doughnut\",\"data\":{\"labels\":["
+            + string.Join(",", rLabels) + "],\"datasets\":[{\"data\":["
+            + string.Join(",", rData) + "],\"backgroundColor\":["
+            + string.Join(",", rColors) + "],"
+            + "\"borderWidth\":2,\"borderColor\":[" + string.Join(",", rColors.Select(_ => "\"#fff\"")) + "]}]},"
             + "\"options\":{\"responsive\":true,"
             + "\"maintainAspectRatio\":false,\"plugins\":{\"legend\":{\"display\":true,\"position\":\"bottom\"}},"
             + "\"cutout\":\"60%\"}}";
