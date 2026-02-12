@@ -1,0 +1,281 @@
+@page "/passages"
+@inject PassageService PassageSvc
+@inject ClientService ClientSvc
+@inject CarteCadeauService CarteSvc
+@inject ProduitService ProduitSvc
+@inject AjustementService AjustSvc
+@inject GoogleAuthService AuthService
+@inject NavigationManager Nav
+
+<PageTitle>Passages - Managely</PageTitle>
+
+<div class="page-header">
+    <div>
+        <h1><i class="bi bi-calendar-check me-2"></i>Passages</h1>
+        <p>Historique des visites</p>
+    </div>
+    @if (AuthService.CanWrite)
+    {
+        <button class="btn btn-gold" @onclick='() => Nav.NavigateTo("passages/nouveau")'>
+            <i class="bi bi-plus-lg me-1"></i> Nouveau passage
+        </button>
+    }
+</div>
+
+<AlertMessage Message="@_alert" Type="@_alertType" OnDismiss="() => _alert = string.Empty" />
+
+<div class="card mb-4 border-0 shadow-sm">
+    <div class="card-body">
+        <div class="row g-3 align-items-center">
+            <div class="col-md-4">
+                <SearchBar Value="@_search" ValueChanged="OnSearch" Placeholder="Rechercher..." />
+            </div>
+            <div class="col-md-2">
+                <button class="btn btn-outline-secondary w-100" @onclick="LoadAsync" disabled="@_loading">
+                    <i class="bi bi-arrow-clockwise me-1 @(_loading ? "spin" : "")"></i> Actualiser
+                </button>
+            </div>
+            <div class="col-md-6 text-end">
+                <span class="text-muted small">
+                    @_filtered.Count passage(s)
+                    @if (_filtered.Count > 0)
+                    {
+                        <span class="ms-2 fw-bold">@_filtered.Sum(p => p.Total).ToString("N2") €</span>
+                    }
+                </span>
+            </div>
+        </div>
+    </div>
+</div>
+
+@if (_loading) { <LoadingSpinner /> }
+else if (_filtered.Count == 0)
+{
+    <div class="alert alert-info"><i class="bi bi-info-circle me-2"></i>Aucun passage enregistré.</div>
+}
+else
+{
+    @* Vue mobile : cards *@
+    <div class="d-md-none">
+        @foreach (var p in _filtered)
+        {
+            <div class="card border-0 shadow-sm mb-2 cursor-pointer" @onclick='() => Nav.NavigateTo($"passages/{p.Guid}")'>
+                <div class="card-body p-3">
+                    <div class="d-flex justify-content-between align-items-start mb-1">
+                        <div>
+                            <strong>@GetClientNom(p.ClientGuid)</strong>
+                            <div class="small text-muted">@p.Date</div>
+                        </div>
+                        <span class="fw-bold text-gold fs-6">@p.Total.ToString("N2") €</span>
+                    </div>
+                    <div class="small text-truncate text-muted">@p.ResumePrestations</div>
+                    <div class="d-flex justify-content-between align-items-center mt-2">
+                        <span class="badge bg-light text-dark">@(string.IsNullOrEmpty(p.ModePaiement) ? "—" : p.ModePaiement)</span>
+                        @if (AuthService.CanWrite)
+                        {
+                            <button class="btn btn-sm btn-outline-danger" @onclick:stopPropagation="true"
+                                    @onclick="() => ConfirmDelete(p)">
+                                <i class="bi bi-trash"></i>
+                            </button>
+                        }
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+
+    @* Vue desktop : table *@
+    <div class="card border-0 shadow-sm d-none d-md-block">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th style="cursor:pointer" @onclick="() => SortBy()">Date <i class="bi @(_sortAsc ? "bi-sort-down" : "bi-sort-up") ms-1"></i></th>
+                        <th>Client</th>
+                        <th>Prestations</th>
+                        <th class="text-end">Total</th>
+                        <th>Paiement</th>
+                        <th class="text-end">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var p in _filtered)
+                    {
+                        <tr>
+                            <td><i class="bi bi-calendar3 me-1 text-muted"></i>@p.Date</td>
+                            <td><strong>@GetClientNom(p.ClientGuid)</strong></td>
+                            <td>
+                                @p.ResumePrestations
+                                @if (p.ProduitsVendus.Count > 0)
+                                {
+                                    <br /><small class="text-muted">+ @p.ProduitsVendus.Count produit(s)</small>
+                                }
+                            </td>
+                            <td class="text-end"><strong>@p.Total.ToString("N2") €</strong></td>
+                            <td>@p.ModePaiement</td>
+                            <td class="text-end">
+                                <button class="btn btn-sm btn-outline-primary me-1"
+                                        @onclick='() => Nav.NavigateTo($"passages/{p.Guid}")' title="Détails">
+                                    <i class="bi bi-eye"></i>
+                                </button>
+                                @if (AuthService.CanWrite)
+                                {
+                                    <button class="btn btn-sm btn-outline-danger" @onclick="() => ConfirmDelete(p)" title="Supprimer">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+}
+
+<ConfirmModal IsVisible="_showDelete" Title="Supprimer le passage"
+              TitleCss="text-danger" Icon="bi-exclamation-triangle"
+              ConfirmText="Supprimer" IsProcessing="_deleting"
+              OnConfirm="DeleteAsync" OnCancel="() => _showDelete = false">
+    <p>Supprimer ce passage du <strong>@_toDelete?.Date</strong> (@_toDelete?.Total.ToString("N2") €) ?</p>
+    <div class="small text-muted">
+        <i class="bi bi-info-circle me-1"></i>Cette action va :
+        <ul class="mb-0 mt-1">
+            @if (_toDelete?.ProduitsVendus.Count > 0)
+            {
+                <li>Restaurer le stock des @_toDelete.ProduitsVendus.Count produit(s) vendu(s)</li>
+            }
+            @if (_toDelete?.Paiements.Any(p => p.Mode == "Carte cadeau") == true || 
+                 (!string.IsNullOrEmpty(_toDelete?.CarteCadeauGuid) && _toDelete?.MontantCarteUtilisee > 0))
+            {
+                <li>Restaurer le solde de la/des carte(s) cadeau utilisée(s)</li>
+            }
+            <li>Créer un ajustement financier d'annulation pour la traçabilité</li>
+        </ul>
+    </div>
+</ConfirmModal>
+
+@code {
+    private List<Passage> _all = [], _filtered = [];
+    private Dictionary<string, string> _clientNoms = new();
+    private bool _loading = true, _sortAsc = false, _showDelete, _deleting;
+    private Passage? _toDelete;
+    private string _search = "", _alert = "", _alertType = "info";
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await AuthService.InitializeAsync();
+            if (!AuthService.IsSignedIn || !AuthService.CanRead) { Nav.NavigateTo("login"); return; }
+            await LoadAsync();
+        }
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true; StateHasChanged();
+        try
+        {
+            _all = await PassageSvc.GetAllAsync(true);
+            var clients = await ClientSvc.GetAllAsync();
+            _clientNoms = clients.ToDictionary(c => c.Guid, c => c.NomComplet);
+            Filter();
+        }
+        catch (Exception ex) { _alert = ex.Message; _alertType = "danger"; }
+        finally { _loading = false; StateHasChanged(); }
+    }
+
+    private string GetClientNom(string guid) => _clientNoms.TryGetValue(guid, out var n) ? n : guid;
+
+    private void OnSearch(string val) { _search = val; Filter(); StateHasChanged(); }
+
+    private void Filter()
+    {
+        var q = _all.AsEnumerable();
+        if (!string.IsNullOrWhiteSpace(_search))
+        {
+            var t = _search.ToLower();
+            q = q.Where(p => GetClientNom(p.ClientGuid).Contains(t, StringComparison.OrdinalIgnoreCase)
+                || p.Date.Contains(t) || p.ResumePrestations.Contains(t, StringComparison.OrdinalIgnoreCase));
+        }
+        _filtered = (_sortAsc ? q.OrderBy(p => p.Date) : q.OrderByDescending(p => p.Date)).ToList();
+    }
+
+    private void SortBy() { _sortAsc = !_sortAsc; Filter(); StateHasChanged(); }
+    private void ConfirmDelete(Passage p) { _toDelete = p; _showDelete = true; }
+
+    private async Task DeleteAsync()
+    {
+        if (_toDelete == null) return;
+        _deleting = true; StateHasChanged();
+        try
+        {
+            // 1. Restaurer le stock des produits vendus
+            foreach (var pv in _toDelete.ProduitsVendus)
+            {
+                if (!string.IsNullOrEmpty(pv.ProduitId))
+                {
+                    var produits = await ProduitSvc.GetAllAsync(true);
+                    var produit = produits.FirstOrDefault(p => p.Guid == pv.ProduitId);
+                    if (produit != null)
+                    {
+                        produit.Stock += pv.Quantite;
+                        await ProduitSvc.UpdateAsync(produit);
+                    }
+                }
+            }
+
+            // 2. Restaurer le solde des cartes cadeaux utilisées
+            if (_toDelete.Paiements.Count > 0)
+            {
+                foreach (var pay in _toDelete.Paiements.Where(p => p.Mode == "Carte cadeau" && !string.IsNullOrEmpty(p.CarteCadeauGuid)))
+                {
+                    var cartes = await CarteSvc.GetAllAsync(true);
+                    var carte = cartes.FirstOrDefault(c => c.Guid == pay.CarteCadeauGuid);
+                    if (carte != null)
+                    {
+                        carte.SoldeRestant += pay.Montant;
+                        carte.Statut = carte.StatutCalcule;
+                        await CarteSvc.UpdateAsync(carte);
+                    }
+                }
+            }
+            else if (!string.IsNullOrEmpty(_toDelete.CarteCadeauGuid) && _toDelete.MontantCarteUtilisee > 0)
+            {
+                var cartes = await CarteSvc.GetAllAsync(true);
+                var carte = cartes.FirstOrDefault(c => c.Guid == _toDelete.CarteCadeauGuid);
+                if (carte != null)
+                {
+                    carte.SoldeRestant += _toDelete.MontantCarteUtilisee;
+                    carte.Statut = carte.StatutCalcule;
+                    await CarteSvc.UpdateAsync(carte);
+                }
+            }
+
+            // 3. Enregistrer un ajustement d'annulation pour traçabilité
+            if (_toDelete.Total > 0)
+            {
+                var ajust = new Models.AjustementFinancier
+                {
+                    Date = DateTime.Now.ToString("dd/MM/yyyy"),
+                    Type = "ajustement",
+                    Montant = -_toDelete.Total,
+                    Description = $"Annulation passage du {_toDelete.Date} ({GetClientNom(_toDelete.ClientGuid)})",
+                    Categorie = "Annulation",
+                    CategorieComptable = "autre",
+                    Note = $"Passage supprimé (GUID: {_toDelete.Guid})"
+                };
+                await AjustSvc.AddAsync(ajust);
+            }
+
+            // 4. Supprimer le passage
+            await PassageSvc.DeleteAsync(_toDelete.RowIndex);
+            _showDelete = false;
+            _alert = "Passage supprimé. Stock et cartes restaurés."; _alertType = "success";
+            await LoadAsync();
+        }
+        catch (Exception ex) { _alert = ex.Message; _alertType = "danger"; }
+        finally { _deleting = false; StateHasChanged(); }
+    }
+}

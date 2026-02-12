@@ -1,0 +1,358 @@
+@page "/cartes-cadeaux"
+@inject CarteCadeauService CarteSvc
+@inject ClientService ClientSvc
+@inject GoogleAuthService AuthService
+@inject NavigationManager Nav
+
+<PageTitle>Cartes cadeaux - Managely</PageTitle>
+
+<div class="page-header">
+    <div>
+        <h1><i class="bi bi-gift me-2"></i>Cartes cadeaux</h1>
+        <p>Gestion des bons cadeaux et fidélité</p>
+    </div>
+    @if (AuthService.CanWrite)
+    {
+        <button class="btn btn-gold" @onclick="ShowAdd">
+            <i class="bi bi-plus-lg me-1"></i> Nouvelle carte
+        </button>
+    }
+</div>
+
+<AlertMessage Message="@_alert" Type="@_alertType" OnDismiss="() => _alert = string.Empty" />
+
+<div class="card mb-4 border-0 shadow-sm">
+    <div class="card-body">
+        <div class="row g-3 align-items-center">
+            <div class="col-md-4">
+                <SearchBar Value="@_search" ValueChanged="OnSearch" Placeholder="Rechercher..." />
+            </div>
+            <div class="col-md-2">
+                <select class="form-select" @bind="_filterType" @bind:after="Filter">
+                    <option value="">Tous types</option>
+                    <option value="achat">Achat</option>
+                    <option value="fidelite">Fidélité</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <select class="form-select" @bind="_filterStatut" @bind:after="Filter">
+                    <option value="">Tous statuts</option>
+                    <option value="active">Active</option>
+                    <option value="utilisee">Utilisée</option>
+                    <option value="expiree">Expirée</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <button class="btn btn-outline-secondary w-100" @onclick="LoadAsync" disabled="@_loading">
+                    <i class="bi bi-arrow-clockwise me-1"></i> Actualiser
+                </button>
+            </div>
+            <div class="col-md-2 text-end">
+                <span class="text-muted small">@_filtered.Count carte(s)</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+@if (_loading) { <LoadingSpinner /> }
+else if (_filtered.Count == 0)
+{
+    <div class="alert alert-info"><i class="bi bi-info-circle me-2"></i>Aucune carte cadeau.</div>
+}
+else
+{
+    <div class="row g-3">
+        @foreach (var c in _filtered)
+        {
+            <div class="col-md-6 col-lg-4">
+                <div class="card border-0 shadow-sm h-100">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-start mb-3">
+                            <span class="badge @(c.Type == "fidelite" ? "bg-warning text-dark" : "bg-info")">
+                                <i class="bi @(c.Type == "fidelite" ? "bi-heart" : "bi-gift") me-1"></i>@c.Type
+                            </span>
+                            <span class="badge @(c.StatutCalcule switch { "active" => "bg-success", "utilisee" => "bg-secondary", _ => "bg-danger" })">
+                                @c.StatutCalcule
+                            </span>
+                        </div>
+                        <h5 class="fw-bold text-gold mb-1">@c.SoldeRestant.ToString("N2") €</h5>
+                        <small class="text-muted">sur @c.MontantInitial.ToString("N2") €</small>
+
+                        <div class="progress mt-2 mb-3" style="height:6px;">
+                            <div class="progress-bar bg-gold"
+                                 style="width:@(c.MontantInitial > 0 ? (c.SoldeRestant / c.MontantInitial * 100).ToString("N0") : "0")%"></div>
+                        </div>
+
+                        <dl class="small mb-0">
+                            <dt class="text-muted">Client</dt>
+                            <dd>@GetClientNom(c.ClientGuid)</dd>
+                            @if (!string.IsNullOrEmpty(c.Origine))
+                            {
+                                <dt class="text-muted">Origine</dt>
+                                <dd>@c.Origine</dd>
+                            }
+                            <dt class="text-muted">Créée le</dt>
+                            <dd>@c.DateCreation @(!string.IsNullOrEmpty(c.DateExpiration) ? $" — Expire le {c.DateExpiration}" : "")</dd>
+                        </dl>
+                    </div>
+                    @if (AuthService.CanWrite)
+                    {
+                        <div class="card-footer bg-transparent border-0 d-flex gap-1 justify-content-end">
+                            @if (c.StatutCalcule == "active" && c.SoldeRestant == c.MontantInitial)
+                            {
+                                @* Seules les cartes jamais utilisées et non expirées peuvent être supprimées *@
+                                <button class="btn btn-sm btn-outline-danger" @onclick="() => ConfirmDelete(c)" title="Supprimer cette carte">
+                                    <i class="bi bi-trash me-1"></i>Supprimer
+                                </button>
+                            }
+                            else
+                            {
+                                <small class="text-muted align-self-center">
+                                    <i class="bi bi-lock me-1"></i>
+                                    @(c.StatutCalcule != "active" ? "Carte " + c.StatutCalcule : "Carte partiellement utilisée") — non supprimable
+                                </small>
+                            }
+                        </div>
+                    }
+                </div>
+            </div>
+        }
+    </div>
+}
+
+@* Modal création uniquement (pas de modification après création) *@
+@if (_showModal)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background-color:rgba(0,0,0,0.5);">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-gift me-2"></i>Nouvelle carte cadeau</h5>
+                    <button type="button" class="btn-close" @onclick="CloseModal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row g-3">
+                        @* Recherche client avec autocomplete (identique au passage) *@
+                        <div class="col-12">
+                            <label class="form-label fw-semibold">Client <span class="text-danger">*</span></label>
+                            <div class="position-relative">
+                                <input type="text" class="form-control"
+                                       placeholder="Rechercher un client par nom, téléphone ou email..."
+                                       value="@_modalClientSearchText"
+                                       @oninput="OnModalClientSearch"
+                                       @onfocus="() => _showModalClientDropdown = true" />
+                                @if (!string.IsNullOrEmpty(_editing.ClientGuid))
+                                {
+                                    <button class="btn btn-sm position-absolute top-50 end-0 translate-middle-y me-2 text-muted"
+                                            @onclick="ClearModalClient" style="z-index:5;">
+                                        <i class="bi bi-x-lg"></i>
+                                    </button>
+                                }
+                                @if (_showModalClientDropdown && _modalClientsFiltered.Count > 0)
+                                {
+                                    <div class="dropdown-menu show w-100 shadow-sm" style="max-height:200px;overflow-y:auto;z-index:1050;">
+                                        @foreach (var c in _modalClientsFiltered.Take(15))
+                                        {
+                                            <button class="dropdown-item d-flex justify-content-between align-items-center"
+                                                    @onclick="() => SelectModalClient(c)">
+                                                <span>
+                                                    <strong>@c.NomComplet</strong>
+                                                    @if (!string.IsNullOrEmpty(c.NumeroTelephone))
+                                                    {
+                                                        <small class="text-muted ms-2">@c.NumeroTelephone</small>
+                                                    }
+                                                </span>
+                                            </button>
+                                        }
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Type de carte</label>
+                            <select class="form-select" @bind="_editing.Type">
+                                <option value="achat">🎁 Achat (carte vendue)</option>
+                                <option value="fidelite">🎖️ Fidélité (carte offerte)</option>
+                            </select>
+                            <small class="text-muted">
+                                @(_editing.Type == "achat" ? "Carte payée par le client." : "Carte offerte suite à fidélité.")
+                            </small>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Montant (€) <span class="text-danger">*</span></label>
+                            <input type="number" class="form-control" @bind="_editing.MontantInitial" step="0.01" min="0" placeholder="0.00" />
+                            <small class="text-muted">Valeur initiale de la carte.</small>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Date d'expiration</label>
+                            <input type="text" class="form-control" @bind="_editing.DateExpiration" placeholder="JJ/MM/AAAA" />
+                            <small class="text-muted">Laissez vide si pas de date limite.</small>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Origine / Description</label>
+                            <input type="text" class="form-control" @bind="_editing.Origine" placeholder="Ex: Cadeau anniversaire" />
+                        </div>
+                    </div>
+                    <div class="alert alert-info small mt-3 mb-0">
+                        <i class="bi bi-info-circle me-1"></i>
+                        <strong>Important :</strong> Une carte cadeau ne peut plus être modifiée après sa création. Vérifiez bien les informations avant d'enregistrer.
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" @onclick="CloseModal">Annuler</button>
+                    <button class="btn btn-gold" @onclick="SaveAsync" disabled="@_saving">
+                        @if (_saving) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                        <i class="bi bi-check-lg me-1"></i> Créer la carte
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+<ConfirmModal IsVisible="_showDelete" Title="Supprimer la carte" TitleCss="text-danger" Icon="bi-exclamation-triangle"
+              ConfirmText="Supprimer" IsProcessing="_deleting"
+              OnConfirm="DeleteAsync" OnCancel="() => _showDelete = false">
+    <p>Supprimer cette carte cadeau de @_toDelete?.MontantInitial.ToString("N2") € ?</p>
+</ConfirmModal>
+
+@code {
+    private List<CarteCadeau> _all = [], _filtered = [];
+    private List<Client> _clients = [];
+    private Dictionary<string, string> _clientNoms = new();
+    private bool _loading = true, _showModal, _saving, _showDelete, _deleting;
+    private CarteCadeau _editing = new();
+    private CarteCadeau? _toDelete;
+    private string _search = "", _filterType = "", _filterStatut = "", _alert = "", _alertType = "info";
+
+    // Recherche client dans le modal
+    private string _modalClientSearchText = "";
+    private bool _showModalClientDropdown;
+    private List<Client> _modalClientsFiltered = [];
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await AuthService.InitializeAsync();
+            if (!AuthService.IsSignedIn || !AuthService.CanRead) { Nav.NavigateTo("login"); return; }
+            await LoadAsync();
+        }
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true; StateHasChanged();
+        try
+        {
+            _all = await CarteSvc.GetAllAsync(true);
+            _clients = await ClientSvc.GetAllAsync();
+            _clientNoms = _clients.ToDictionary(c => c.Guid, c => c.NomComplet);
+            Filter();
+        }
+        catch (Exception ex) { _alert = ex.Message; _alertType = "danger"; }
+        finally { _loading = false; StateHasChanged(); }
+    }
+
+    private string GetClientNom(string guid) => _clientNoms.TryGetValue(guid, out var n) ? n : "—";
+    private void OnSearch(string val) { _search = val; Filter(); StateHasChanged(); }
+
+    private void Filter()
+    {
+        var q = _all.AsEnumerable();
+        if (!string.IsNullOrWhiteSpace(_search))
+        {
+            var t = _search.ToLower();
+            q = q.Where(c => GetClientNom(c.ClientGuid).Contains(t, StringComparison.OrdinalIgnoreCase) || c.Origine.Contains(t, StringComparison.OrdinalIgnoreCase));
+        }
+        if (!string.IsNullOrEmpty(_filterType)) q = q.Where(c => c.Type == _filterType);
+        if (!string.IsNullOrEmpty(_filterStatut)) q = q.Where(c => c.StatutCalcule == _filterStatut);
+        _filtered = q.OrderByDescending(c => c.DateCreation).ToList();
+        StateHasChanged();
+    }
+
+    private void ShowAdd()
+    {
+        _editing = new CarteCadeau
+        {
+            Type = "achat",
+            DateCreation = DateTime.Now.ToString("dd/MM/yyyy"),
+            DateExpiration = DateTime.Now.AddYears(1).ToString("dd/MM/yyyy")
+        };
+        _modalClientSearchText = "";
+        _modalClientsFiltered = [];
+        _showModalClientDropdown = false;
+        _showModal = true;
+    }
+
+    private void CloseModal() { _showModal = false; }
+    private void ConfirmDelete(CarteCadeau c) { _toDelete = c; _showDelete = true; }
+
+    // Recherche client modal
+    private void OnModalClientSearch(ChangeEventArgs e)
+    {
+        _modalClientSearchText = e.Value?.ToString() ?? "";
+        _showModalClientDropdown = true;
+        if (string.IsNullOrWhiteSpace(_modalClientSearchText))
+        {
+            _modalClientsFiltered = _clients.Take(15).ToList();
+            _editing.ClientGuid = "";
+        }
+        else
+        {
+            var t = _modalClientSearchText.ToLower();
+            _modalClientsFiltered = _clients
+                .Where(c => c.NomComplet.Contains(t, StringComparison.OrdinalIgnoreCase)
+                    || c.NumeroTelephone.Contains(t, StringComparison.OrdinalIgnoreCase)
+                    || c.Email.Contains(t, StringComparison.OrdinalIgnoreCase))
+                .Take(15).ToList();
+        }
+    }
+
+    private void SelectModalClient(Client c)
+    {
+        _editing.ClientGuid = c.Guid;
+        _modalClientSearchText = c.NomComplet;
+        _showModalClientDropdown = false;
+    }
+
+    private void ClearModalClient()
+    {
+        _editing.ClientGuid = "";
+        _modalClientSearchText = "";
+    }
+
+    private async Task SaveAsync()
+    {
+        if (string.IsNullOrEmpty(_editing.ClientGuid)) { _alert = "Veuillez sélectionner un client."; _alertType = "warning"; return; }
+        if (_editing.MontantInitial <= 0) { _alert = "Le montant doit être supérieur à 0."; _alertType = "warning"; return; }
+
+        // Création uniquement (pas de modification)
+        _editing.SoldeRestant = _editing.MontantInitial;
+
+        _saving = true; StateHasChanged();
+        try
+        {
+            await CarteSvc.AddAsync(_editing);
+            _alert = $"Carte cadeau de {_editing.MontantInitial:N2} € créée avec succès.";
+            _alertType = "success";
+            CloseModal(); await LoadAsync();
+        }
+        catch (Exception ex) { _alert = ex.Message; _alertType = "danger"; }
+        finally { _saving = false; StateHasChanged(); }
+    }
+
+    private async Task DeleteAsync()
+    {
+        if (_toDelete == null) return;
+        _deleting = true; StateHasChanged();
+        try
+        {
+            await CarteSvc.DeleteAsync(_toDelete.RowIndex);
+            _alert = "Carte cadeau supprimée."; _alertType = "success";
+            _showDelete = false; await LoadAsync();
+        }
+        catch (Exception ex) { _alert = ex.Message; _alertType = "danger"; }
+        finally { _deleting = false; StateHasChanged(); }
+    }
+}

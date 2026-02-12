@@ -1,0 +1,42 @@
+@* Carte statistique pour le dashboard *@
+
+<div class="card stat-card h-100 border-0 shadow-sm @(Clickable ? "cursor-pointer" : "")" @onclick="HandleClick">
+    <div class="card-body">
+        <div class="d-flex align-items-center">
+            <div class="stat-icon @BgClass @TextClass">
+                <i class="bi @Icon"></i>
+            </div>
+            <div class="ms-3">
+                <h2 class="mb-0 fw-bold">@Value</h2>
+                <p class="text-muted mb-0 small">@Label</p>
+            </div>
+        </div>
+    </div>
+    @if (!string.IsNullOrEmpty(Footer))
+    {
+        <div class="card-footer bg-transparent border-0 pt-0">
+            <small class="@TextClass">
+                @Footer @if (Clickable) { <i class="bi bi-arrow-right"></i> }
+            </small>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public string Value { get; set; } = "0";
+    [Parameter] public string Label { get; set; } = "";
+    [Parameter] public string Icon { get; set; } = "bi-bar-chart";
+    [Parameter] public string Color { get; set; } = "primary"; // primary, success, warning, danger, info, gold
+    [Parameter] public string Footer { get; set; } = "";
+    [Parameter] public bool Clickable { get; set; }
+    [Parameter] public EventCallback OnClick { get; set; }
+
+    private string BgClass => Color == "gold" ? "bg-gold-subtle" : $"bg-{Color}-subtle";
+    private string TextClass => Color == "gold" ? "text-gold" : $"text-{Color}";
+
+    private async Task HandleClick()
+    {
+        if (OnClick.HasDelegate)
+            await OnClick.InvokeAsync();
+    }
+}

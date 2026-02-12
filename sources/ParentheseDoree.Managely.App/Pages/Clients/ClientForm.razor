@@ -1,0 +1,172 @@
+@page "/clients/nouveau"
+@page "/clients/{Guid}/modifier"
+@inject ClientService ClientSvc
+@inject GoogleAuthService AuthService
+@inject NavigationManager Nav
+@inject IJSRuntime JSRuntime
+
+<PageTitle>@(_isEdit ? "Modifier" : "Nouveau") client - Managely</PageTitle>
+
+<div class="page-header">
+    <div>
+        <h1><i class="bi @(_isEdit ? "bi-pencil" : "bi-person-plus") me-2"></i>@(_isEdit ? "Modifier le client" : "Nouveau client")</h1>
+    </div>
+    <button class="btn btn-outline-secondary" @onclick="GoBack">
+        <i class="bi bi-arrow-left me-1"></i> Retour
+    </button>
+</div>
+
+<AlertMessage Message="@_alert" Type="@_alertType" OnDismiss="() => _alert = string.Empty" />
+
+@if (_conflitDetecte)
+{
+    <div class="alert alert-danger">
+        <i class="bi bi-exclamation-triangle me-2"></i>
+        <strong>Conflit détecté !</strong> Ce client a été modifié par un autre utilisateur.
+        <div class="mt-2">
+            <button class="btn btn-sm btn-outline-danger me-2" @onclick="ForcerSauvegarde">
+                <i class="bi bi-save me-1"></i> Forcer l'écriture
+            </button>
+            <button class="btn btn-sm btn-outline-primary" @onclick="RechargerDonnees">
+                <i class="bi bi-arrow-clockwise me-1"></i> Recharger les données
+            </button>
+        </div>
+    </div>
+}
+
+<div class="card border-0 shadow-sm">
+    <div class="card-body">
+        <p class="text-muted small mb-3"><i class="bi bi-info-circle me-1"></i>Les champs marqués <span class="text-danger">*</span> sont obligatoires.</p>
+        <div class="row g-3">
+            <div class="col-md-6">
+                <label class="form-label fw-semibold">Nom de famille <span class="text-danger">*</span></label>
+                <input type="text" class="form-control" @bind="_client.Nom" placeholder="Ex: Dupont" />
+            </div>
+            <div class="col-md-6">
+                <label class="form-label fw-semibold">Prénom <span class="text-danger">*</span></label>
+                <input type="text" class="form-control" @bind="_client.Prenom" placeholder="Ex: Marie" />
+            </div>
+            <div class="col-md-6">
+                <label class="form-label fw-semibold">Numéro de téléphone</label>
+                <input type="tel" class="form-control" @bind="_client.NumeroTelephone" placeholder="Ex: 06 12 34 56 78" />
+                <small class="text-muted">Pour rappels et communications.</small>
+            </div>
+            <div class="col-md-6">
+                <label class="form-label fw-semibold">Adresse email</label>
+                <input type="email" class="form-control" @bind="_client.Email" placeholder="Ex: marie.dupont@email.com" />
+                <small class="text-muted">Pour l'envoi de confirmations.</small>
+            </div>
+            <div class="col-md-6">
+                <label class="form-label fw-semibold">Mois d'anniversaire</label>
+                <select class="form-select" @bind="_client.MoisAnniversaire">
+                    <option value="">-- Sélectionner le mois --</option>
+                    <option value="Janvier">Janvier</option>
+                    <option value="Février">Février</option>
+                    <option value="Mars">Mars</option>
+                    <option value="Avril">Avril</option>
+                    <option value="Mai">Mai</option>
+                    <option value="Juin">Juin</option>
+                    <option value="Juillet">Juillet</option>
+                    <option value="Août">Août</option>
+                    <option value="Septembre">Septembre</option>
+                    <option value="Octobre">Octobre</option>
+                    <option value="Novembre">Novembre</option>
+                    <option value="Décembre">Décembre</option>
+                </select>
+                <small class="text-muted">Permet de recevoir une alerte anniversaire.</small>
+            </div>
+            <div class="col-md-6">
+                <label class="form-label fw-semibold">Adresse postale</label>
+                <input type="text" class="form-control" @bind="_client.Adresse" placeholder="Ex: 12 rue de la Paix, 75000 Paris" />
+            </div>
+        </div>
+
+        <div class="mt-4 d-flex gap-2 flex-wrap">
+            <button class="btn btn-gold" @onclick="SaveAsync" disabled="@_saving">
+                @if (_saving) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                <i class="bi bi-check-lg me-1"></i> Enregistrer
+            </button>
+            <button class="btn btn-secondary" @onclick="GoBack">Annuler</button>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter] public string? Guid { get; set; }
+
+    private Client _client = new();
+    private bool _isEdit;
+    private bool _saving;
+    private bool _conflitDetecte;
+    private string _alert = "";
+    private string _alertType = "info";
+    private string _hachageOriginal = "";
+
+    private async Task GoBack() => await JSRuntime.InvokeVoidAsync("navigateBack");
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await AuthService.InitializeAsync();
+            if (!AuthService.IsSignedIn || !AuthService.CanWrite)
+            { Nav.NavigateTo("login"); return; }
+
+            if (!string.IsNullOrEmpty(Guid))
+            {
+                _isEdit = true;
+                var c = await ClientSvc.GetByGuidAsync(Guid);
+                if (c != null)
+                {
+                    _client = c;
+                    _hachageOriginal = c.HachageIntegrite;
+                }
+                else { Nav.NavigateTo("clients"); return; }
+            }
+            StateHasChanged();
+        }
+    }
+
+    private async Task SaveAsync() => await DoSaveAsync(false);
+    private async Task ForcerSauvegarde() => await DoSaveAsync(true);
+
+    private async Task DoSaveAsync(bool forceWrite)
+    {
+        if (string.IsNullOrWhiteSpace(_client.Nom) || string.IsNullOrWhiteSpace(_client.Prenom))
+        { _alert = "Nom et prénom obligatoires."; _alertType = "warning"; return; }
+
+        _saving = true; _conflitDetecte = false; StateHasChanged();
+        try
+        {
+            if (_isEdit)
+            {
+                var success = await ClientSvc.UpdateAsync(_client, forceWrite);
+                if (!success)
+                {
+                    _conflitDetecte = true;
+                    _saving = false;
+                    StateHasChanged();
+                    return;
+                }
+            }
+            else
+            {
+                await ClientSvc.AddAsync(_client);
+            }
+            Nav.NavigateTo("clients");
+        }
+        catch (Exception ex) { _alert = $"Erreur: {ex.Message}"; _alertType = "danger"; }
+        finally { _saving = false; StateHasChanged(); }
+    }
+
+    private async Task RechargerDonnees()
+    {
+        if (!string.IsNullOrEmpty(Guid))
+        {
+            var c = await ClientSvc.GetByGuidAsync(Guid);
+            if (c != null) { _client = c; _hachageOriginal = c.HachageIntegrite; }
+            _conflitDetecte = false;
+            StateHasChanged();
+        }
+    }
+}

@@ -1,124 +1,137 @@
 @inherits LayoutComponentBase
-@inject ParentheseDoree.Managely.App.Services.GoogleAuthService AuthService
+@inject GoogleAuthService AuthService
 @inject NavigationManager NavigationManager
+@implements IDisposable
 
-@* Layout principal avec barre de navigation *@
-
-@if (AuthService.IsSignedIn && AuthService.CanRead)
+@if (_isAuthenticated)
 {
-    <div class="app-container">
-        @* Barre de navigation *@
-        <nav class="navbar navbar-expand-lg navbar-dark bg-gradient-gold">
-            <div class="container-fluid">
-                <a class="navbar-brand d-flex align-items-center" href="">
-                    <i class="bi bi-gem me-2"></i>
-                    <span class="fw-bold">Managely</span>
+    <div class="app-layout">
+        @* Sidebar *@
+        <aside class="sidebar @(_sidebarOpen ? "open" : "")">
+            <div class="sidebar-header">
+                <a href="" class="sidebar-brand">
+                    <i class="bi bi-gem"></i>
+                    <span class="brand-text">Managely</span>
                 </a>
-                
-                <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
-                    <span class="navbar-toggler-icon"></span>
+                <button class="btn-sidebar-close d-lg-none" @onclick="ToggleSidebar">
+                    <i class="bi bi-x-lg"></i>
                 </button>
-                
-                <div class="collapse navbar-collapse" id="navbarNav">
-                    <ul class="navbar-nav me-auto">
-                        <li class="nav-item">
-                            <NavLink class="nav-link" href="" Match="NavLinkMatch.All">
-                                <i class="bi bi-house me-1"></i> Accueil
-                            </NavLink>
-                        </li>
-                        <li class="nav-item">
-                            <NavLink class="nav-link" href="clients">
-                                <i class="bi bi-people me-1"></i> Clients
-                            </NavLink>
-                        </li>
-                        <li class="nav-item">
-                            <NavLink class="nav-link" href="prestations">
-                                <i class="bi bi-calendar-check me-1"></i> Prestations
-                            </NavLink>
-                        </li>
-                    </ul>
-                    
-                    @* Infos utilisateur *@
-                    <div class="d-flex align-items-center">
-                        @if (!string.IsNullOrEmpty(AuthService.CurrentUser?.Picture))
-                        {
-                            <img src="@AuthService.CurrentUser.Picture" 
-                                 alt="@AuthService.CurrentUser.Name" 
-                                 class="rounded-circle me-2"
-                                 style="width: 32px; height: 32px; object-fit: cover;"
-                                 referrerpolicy="no-referrer" />
-                        }
-                        <span class="text-white me-3 d-none d-md-inline">
-                            @AuthService.CurrentUser?.Name
-                        </span>
-                        <button class="btn btn-outline-light btn-sm" @onclick="SignOutAsync">
-                            <i class="bi bi-box-arrow-right"></i>
-                        </button>
+            </div>
+
+            <nav class="sidebar-nav">
+                <NavLink class="sidebar-link" href="" Match="NavLinkMatch.All" @onclick="CloseSidebar">
+                    <i class="bi bi-house"></i><span>Accueil</span>
+                </NavLink>
+                <NavLink class="sidebar-link" href="clients" @onclick="CloseSidebar">
+                    <i class="bi bi-people"></i><span>Clients</span>
+                </NavLink>
+                <NavLink class="sidebar-link" href="passages" @onclick="CloseSidebar">
+                    <i class="bi bi-calendar-check"></i><span>Passages</span>
+                </NavLink>
+                <NavLink class="sidebar-link" href="prestations" @onclick="CloseSidebar">
+                    <i class="bi bi-scissors"></i><span>Prestations</span>
+                </NavLink>
+                <NavLink class="sidebar-link" href="produits" @onclick="CloseSidebar">
+                    <i class="bi bi-box-seam"></i><span>Produits</span>
+                </NavLink>
+                <NavLink class="sidebar-link" href="cartes-cadeaux" @onclick="CloseSidebar">
+                    <i class="bi bi-gift"></i><span>Cartes cadeaux</span>
+                </NavLink>
+                <NavLink class="sidebar-link" href="finance" @onclick="CloseSidebar">
+                    <i class="bi bi-graph-up"></i><span>Finance</span>
+                </NavLink>
+                <NavLink class="sidebar-link" href="parametres" @onclick="CloseSidebar">
+                    <i class="bi bi-gear"></i><span>Paramètres</span>
+                </NavLink>
+            </nav>
+
+            <div class="sidebar-footer">
+                <div class="d-flex align-items-center p-3">
+                    @if (!string.IsNullOrEmpty(AuthService.CurrentUser?.Picture))
+                    {
+                        <img src="@AuthService.CurrentUser.Picture"
+                             alt="@AuthService.CurrentUser.Name"
+                             class="rounded-circle me-2"
+                             style="width:32px;height:32px;object-fit:cover;"
+                             referrerpolicy="no-referrer" />
+                    }
+                    <div class="flex-grow-1 small text-truncate">
+                        <div class="fw-semibold text-white">@AuthService.CurrentUser?.GivenName</div>
+                        <div class="text-white-50 small">
+                            @(AuthService.CanWrite ? "Lecture/Écriture" : "Lecture seule")
+                        </div>
                     </div>
+                    <button class="btn btn-sm btn-outline-light ms-2" @onclick="SignOutAsync" title="Déconnexion">
+                        <i class="bi bi-box-arrow-right"></i>
+                    </button>
                 </div>
             </div>
-        </nav>
+        </aside>
+
+        @* Overlay mobile *@
+        @if (_sidebarOpen)
+        {
+            <div class="sidebar-overlay d-lg-none" @onclick="CloseSidebar"></div>
+        }
 
         @* Contenu principal *@
-        <main class="container py-4">
-            @Body
-        </main>
+        <div class="main-content">
+            <header class="main-header d-lg-none">
+                <button class="btn btn-link text-dark" @onclick="ToggleSidebar">
+                    <i class="bi bi-list fs-4"></i>
+                </button>
+                <span class="fw-bold">Managely</span>
+            </header>
 
-        @* Footer *@
-        <footer class="footer mt-auto py-3 bg-light border-top">
-            <div class="container text-center text-muted small">
-                <i class="bi bi-gem me-1"></i>
-                Managely - Centre Esthétique Parenthèse Dorée
-                <span class="mx-2">|</span>
-                @(AuthService.CanWrite ? "Mode Lecture/Écriture" : "Mode Lecture seule")
-            </div>
-        </footer>
+            <main class="page-content">
+                @Body
+            </main>
+        </div>
     </div>
 }
 else
 {
-    @* Pas de layout pour la page de login *@
     @Body
 }
 
-<style>
-    .app-container {
-        display: flex;
-        flex-direction: column;
-        min-height: 100vh;
-    }
-
-    main {
-        flex: 1;
-    }
-
-    .bg-gradient-gold {
-        background: linear-gradient(135deg, #d4a574 0%, #c49464 50%, #b38454 100%);
-    }
-
-    .navbar-brand {
-        font-size: 1.25rem;
-    }
-
-    .nav-link {
-        color: rgba(255, 255, 255, 0.85) !important;
-        transition: color 0.2s ease;
-    }
-
-    .nav-link:hover,
-    .nav-link.active {
-        color: white !important;
-    }
-
-    .footer {
-        font-size: 0.85rem;
-    }
-</style>
-
 @code {
+    private bool _sidebarOpen = false;
+    private bool _isAuthenticated = false;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            // S'abonner aux changements d'état d'authentification
+            AuthService.OnAuthStateChanged += HandleAuthStateChanged;
+
+            // Initialiser l'auth et restaurer la session
+            await AuthService.InitializeAsync();
+
+            // Mettre à jour l'état après restauration
+            _isAuthenticated = AuthService.IsSignedIn && AuthService.CanRead;
+            StateHasChanged();
+        }
+    }
+
+    private void HandleAuthStateChanged(bool isSignedIn, Models.GoogleUser? user)
+    {
+        _isAuthenticated = isSignedIn && AuthService.CanRead;
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void ToggleSidebar() => _sidebarOpen = !_sidebarOpen;
+    private void CloseSidebar() => _sidebarOpen = false;
+
     private async Task SignOutAsync()
     {
         await AuthService.SignOutAsync();
+        _isAuthenticated = false;
         NavigationManager.NavigateTo("login", forceLoad: true);
+    }
+
+    public void Dispose()
+    {
+        AuthService.OnAuthStateChanged -= HandleAuthStateChanged;
     }
 }

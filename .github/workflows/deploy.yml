@@ -1,72 +1,71 @@
-# Workflow pour déployer l'application sur GitHub Pages
-# Déclenché automatiquement à chaque push sur la branche main
-
-name: Deploy to GitHub Pages
+name: Deploy Blazor WASM to GitHub Pages
 
 on:
-  # Déclenchement sur push vers main
   push:
-    branches: [main]
-  # Permet aussi le déclenchement manuel depuis l'onglet Actions
+    branches: [ main, master ]
   workflow_dispatch:
 
-# Permissions nécessaires pour déployer sur GitHub Pages
 permissions:
   contents: read
   pages: write
   id-token: write
 
-# Un seul déploiement à la fois
 concurrency:
   group: "pages"
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
-  # Job de build
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout du code
-        uses: actions/checkout@v6
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - name: Setup .NET SDK
-        uses: actions/setup-dotnet@v5
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '9'
+          dotnet-version: '9.0.x'
 
-      - name: Restauration des dépendances
-        run: dotnet restore
+      - name: Restore dependencies
+        run: dotnet restore sources/ParentheseDoree.Managely.App
 
-      - name: Build en mode Release
-        run: dotnet publish sources/ParentheseDoree.Managely.App/ParentheseDoree.Managely.App.csproj -c Release -o release --nologo
+      - name: Build
+        run: dotnet publish sources/ParentheseDoree.Managely.App -c Release -o release
 
-      # Ajouter .nojekyll pour éviter que GitHub ignore les fichiers _framework
-      - name: Créer .nojekyll
-        run: touch release/wwwroot/.nojekyll
-
-      # Configurer le routing SPA en remplaçant le placeholder __BASE_PATH__
-      - name: Configurer le routing SPA
+      - name: Configure base path for GitHub Pages
         run: |
+          # Detect repo name for base path
           REPO_NAME=$(echo "${{ github.repository }}" | cut -d'/' -f2)
-          sed -i "s|__BASE_PATH__|$REPO_NAME/|g" release/wwwroot/404.html
-          sed -i "s|__BASE_PATH__|$REPO_NAME/|g" release/wwwroot/js/spa-redirect.js
+          BASE_PATH="/${REPO_NAME}/"
+          
+          echo "Repository: ${{ github.repository }}"
+          echo "Base path: ${BASE_PATH}"
+          
+          # Update base href in index.html
+          sed -i "s|<base href=\"/\" />|<base href=\"${BASE_PATH}\" />|g" release/wwwroot/index.html
+          
+          # Update SPA redirect scripts
+          sed -i "s|/__BASE_PATH__|${BASE_PATH}|g" release/wwwroot/404.html
+          sed -i "s|/__BASE_PATH__|${BASE_PATH}|g" release/wwwroot/js/spa-redirect.js
+          
+          # Copy index.html to 404.html for SPA routing (override the redirect version)
+          # Actually keep the redirect 404.html since it handles SPA routing properly
+          
+          # Create .nojekyll to prevent Jekyll processing
+          touch release/wwwroot/.nojekyll
 
-      - name: Configuration de GitHub Pages
-        uses: actions/configure-pages@v5
-
-      - name: Upload des fichiers
-        uses: actions/upload-pages-artifact@v4
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
         with:
-          path: 'release/wwwroot'
+          path: release/wwwroot
 
-  # Job de déploiement
   deploy:
+    needs: build
+    runs-on: ubuntu-latest
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
-    runs-on: ubuntu-latest
-    needs: build
     steps:
-      - name: Déploiement sur GitHub Pages
+      - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4

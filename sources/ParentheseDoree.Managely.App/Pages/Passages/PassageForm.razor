@@ -1,0 +1,713 @@
+@page "/passages/nouveau"
+@page "/passages/{Guid}/modifier"
+@inject PassageService PassageSvc
+@inject ClientService ClientSvc
+@inject PrestationService PrestaSvc
+@inject ProduitService ProduitSvc
+@inject CarteCadeauService CarteSvc
+@inject FideliteService FideliteSvc
+@inject MouvementStockService MouvementSvc
+@inject GoogleAuthService AuthService
+@inject NavigationManager Nav
+@inject IJSRuntime JSRuntime
+
+<PageTitle>@(_isEdit ? "Modifier" : "Nouveau") passage - Managely</PageTitle>
+
+<div class="page-header">
+    <div><h1><i class="bi bi-calendar-plus me-2"></i>@(_isEdit ? "Modifier le passage" : "Nouveau passage")</h1></div>
+    <button class="btn btn-outline-secondary" @onclick="GoBack"><i class="bi bi-arrow-left me-1"></i> Retour</button>
+</div>
+
+<AlertMessage Message="@_alert" Type="@_alertType" OnDismiss="() => _alert = string.Empty" />
+
+@if (_conflitDetecte)
+{
+    <div class="alert alert-danger">
+        <i class="bi bi-exclamation-triangle me-2"></i>
+        <strong>Conflit détecté !</strong> Ce passage a été modifié par un autre utilisateur.
+        <div class="mt-2">
+            <button class="btn btn-sm btn-outline-danger me-2" @onclick="ForcerSauvegarde">
+                <i class="bi bi-save me-1"></i> Forcer l'écriture
+            </button>
+            <button class="btn btn-sm btn-outline-primary" @onclick="RechargerDonnees">
+                <i class="bi bi-arrow-clockwise me-1"></i> Recharger
+            </button>
+        </div>
+    </div>
+}
+
+@if (_fideliteCarte != null)
+{
+    <div class="alert alert-success">
+        <i class="bi bi-gift me-2"></i>
+        <strong>Carte fidélité générée !</strong> Valeur : @_fideliteCarte.MontantInitial.ToString("N2") € (@_fideliteCarte.Origine)
+    </div>
+}
+
+<div class="row g-4">
+    @* Colonne gauche : infos principales *@
+    <div class="col-lg-8">
+        <div class="card border-0 shadow-sm mb-4">
+            <div class="card-header pt-3"><h5 class="mb-0">Informations du passage</h5></div>
+            <div class="card-body">
+                <div class="row g-3">
+                    @* Sélection client avec recherche *@
+                    <div class="col-md-6">
+                        <label class="form-label">Client <span class="text-danger">*</span></label>
+                        <div class="position-relative">
+                            <input type="text" class="form-control"
+                                   placeholder="Rechercher un client..."
+                                   value="@_clientSearchText"
+                                   @oninput="OnClientSearch"
+                                   @onfocus="() => _showClientDropdown = true" />
+                            @if (!string.IsNullOrEmpty(_passage.ClientGuid))
+                            {
+                                <button class="btn btn-sm position-absolute top-50 end-0 translate-middle-y me-2 text-muted"
+                                        @onclick="ClearClient" style="z-index:5;">
+                                    <i class="bi bi-x-lg"></i>
+                                </button>
+                            }
+                            @if (_showClientDropdown && _clientsFiltered.Count > 0)
+                            {
+                                <div class="dropdown-menu show w-100 shadow-sm" style="max-height:250px;overflow-y:auto;z-index:1050;">
+                                    @foreach (var c in _clientsFiltered.Take(20))
+                                    {
+                                        <button class="dropdown-item d-flex justify-content-between align-items-center"
+                                                @onclick="() => SelectClient(c)">
+                                            <span>
+                                                <strong>@c.NomComplet</strong>
+                                                @if (!string.IsNullOrEmpty(c.NumeroTelephone))
+                                                {
+                                                    <small class="text-muted ms-2">@c.NumeroTelephone</small>
+                                                }
+                                            </span>
+                                        </button>
+                                    }
+                                </div>
+                            }
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">Date <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" @bind="_passage.Date" placeholder="JJ/MM/AAAA" />
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        @* Prestations *@
+        <div class="card border-0 shadow-sm mb-4">
+            <div class="card-header pt-3 d-flex justify-content-between align-items-center">
+                <h5 class="mb-0"><i class="bi bi-scissors me-2 text-gold"></i>Prestations réalisées</h5>
+                <button class="btn btn-sm btn-outline-gold" @onclick="AddPrestation"><i class="bi bi-plus"></i> Ajouter une prestation</button>
+            </div>
+            <div class="card-body">
+                @if (_passage.Prestations.Count == 0)
+                {
+                    <p class="text-muted mb-0"><i class="bi bi-info-circle me-1"></i>Aucune prestation ajoutée. Cliquez sur « Ajouter » pour sélectionner un soin du catalogue.</p>
+                }
+                @for (int i = 0; i < _passage.Prestations.Count; i++)
+                {
+                    var idx = i;
+                    var pp = _passage.Prestations[idx];
+                    <div class="row g-2 mb-2 align-items-end">
+                        <div class="col-md-5">
+                            <label class="form-label small text-muted mb-0">Soin</label>
+                            <select class="form-select form-select-sm" value="@pp.PrestationId"
+                                    @onchange="(e) => OnPrestationSelected(idx, e)">
+                                <option value="">-- Choisir un soin --</option>
+                                @foreach (var p in _prestationsCatalogue)
+                                {
+                                    <option value="@p.Guid">@p.Nom (@p.PrixDefaut €)</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label small text-muted mb-0">Prix (€)</label>
+                            <input type="number" class="form-control form-control-sm" @bind="pp.Prix" step="0.01" placeholder="0.00" />
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label small text-muted mb-0">Durée (min)</label>
+                            <input type="number" class="form-control form-control-sm" @bind="pp.DureeMinutes" placeholder="0" />
+                        </div>
+                        <div class="col-md-1">
+                            <button class="btn btn-sm btn-outline-danger" @onclick="() => _passage.Prestations.RemoveAt(idx)" title="Retirer"><i class="bi bi-x"></i></button>
+                        </div>
+                    </div>
+                }
+            </div>
+        </div>
+
+        @* Produits vendus *@
+        <div class="card border-0 shadow-sm mb-4">
+            <div class="card-header pt-3 d-flex justify-content-between align-items-center">
+                <h5 class="mb-0"><i class="bi bi-bag me-2 text-gold"></i>Produits vendus</h5>
+                <button class="btn btn-sm btn-outline-gold" @onclick="AddProduitVendu"><i class="bi bi-plus"></i> Ajouter un produit</button>
+            </div>
+            <div class="card-body">
+                @if (_passage.ProduitsVendus.Count == 0)
+                {
+                    <p class="text-muted mb-0"><i class="bi bi-info-circle me-1"></i>Aucun produit vendu lors de ce passage.</p>
+                }
+                @for (int i = 0; i < _passage.ProduitsVendus.Count; i++)
+                {
+                    var idx = i;
+                    var pv = _passage.ProduitsVendus[idx];
+                    <div class="row g-2 mb-2 align-items-end">
+                        <div class="col-md-4">
+                            <label class="form-label small text-muted mb-0">Produit</label>
+                            <select class="form-select form-select-sm" value="@pv.ProduitId"
+                                    @onchange="(e) => OnProduitVenduSelected(idx, e)">
+                                <option value="">-- Choisir un produit --</option>
+                                @foreach (var p in _produitsCatalogue)
+                                {
+                                    <option value="@p.Guid">@p.Nom (@p.PrixVente €) [stock: @p.Stock]</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label small text-muted mb-0">Quantité</label>
+                            <input type="number" class="form-control form-control-sm" @bind="pv.Quantite" min="1" placeholder="1" />
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label small text-muted mb-0">Prix unit. (€)</label>
+                            <input type="number" class="form-control form-control-sm" @bind="pv.PrixUnitaire" step="0.01" placeholder="0.00" />
+                        </div>
+                        <div class="col-md-2 text-end">
+                            <label class="form-label small text-muted mb-0">Total</label>
+                            <div class="fw-bold small">@pv.Total.ToString("N2") €</div>
+                        </div>
+                        <div class="col-md-1">
+                            <button class="btn btn-sm btn-outline-danger" @onclick="() => _passage.ProduitsVendus.RemoveAt(idx)" title="Retirer"><i class="bi bi-x"></i></button>
+                        </div>
+                    </div>
+                }
+            </div>
+        </div>
+
+        @* Produits conseillés (hybride : catalogue ou texte libre) *@
+        <div class="card border-0 shadow-sm mb-4">
+            <div class="card-header pt-3 d-flex justify-content-between align-items-center">
+                <h5 class="mb-0"><i class="bi bi-lightbulb me-2 text-gold"></i>Produits conseillés</h5>
+                <button class="btn btn-sm btn-outline-gold" @onclick="AddProduitConseille"><i class="bi bi-plus"></i> Ajouter</button>
+            </div>
+            <div class="card-body">
+                @if (_passage.ProduitsConseilles.Count == 0)
+                {
+                    <p class="text-muted mb-0">Aucun produit conseillé.</p>
+                }
+                @for (int i = 0; i < _passage.ProduitsConseilles.Count; i++)
+                {
+                    var idx = i;
+                    var pc = _passage.ProduitsConseilles[idx];
+                    <div class="row g-2 mb-2 align-items-end">
+                        <div class="col-md-4">
+                            <div class="input-group input-group-sm">
+                                <select class="form-select form-select-sm" value="@pc.ProduitId"
+                                        @onchange="(e) => OnProduitConseilleSelected(idx, e)"
+                                        style="max-width:60%;">
+                                    <option value="">-- Libre --</option>
+                                    @foreach (var p in _produitsCatalogue)
+                                    {
+                                        <option value="@p.Guid">@p.Nom</option>
+                                    }
+                                </select>
+                                @if (pc.EstTexteLibre)
+                                {
+                                    <input type="text" class="form-control form-control-sm" @bind="pc.Nom"
+                                           placeholder="Nom libre..." />
+                                }
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <input type="text" class="form-control form-control-sm" @bind="pc.Commentaire" placeholder="Commentaire..." />
+                        </div>
+                        <div class="col-md-1">
+                            <button class="btn btn-sm btn-outline-danger" @onclick="() => _passage.ProduitsConseilles.RemoveAt(idx)"><i class="bi bi-x"></i></button>
+                        </div>
+                    </div>
+                }
+            </div>
+        </div>
+
+        @* Note interne *@
+        <div class="card border-0 shadow-sm mb-4">
+            <div class="card-header pt-3"><h5 class="mb-0"><i class="bi bi-journal-text me-2 text-gold"></i>Note interne</h5></div>
+            <div class="card-body">
+                <textarea class="form-control" rows="3" @bind="_passage.NoteInterne"
+                          placeholder="Notes professionnelles (préférences, allergies, recommandations...)"></textarea>
+            </div>
+        </div>
+    </div>
+
+    @* Colonne droite : paiement + récapitulatif *@
+    <div class="col-lg-4">
+        @* Paiement multi-moyens *@
+        <div class="card border-0 shadow-sm mb-4">
+            <div class="card-header pt-3 d-flex justify-content-between align-items-center">
+                <h5 class="mb-0"><i class="bi bi-credit-card me-2"></i>Paiement</h5>
+                <button class="btn btn-sm btn-outline-gold" @onclick="AddPaiement" title="Ajouter un moyen de paiement"><i class="bi bi-plus"></i> Fractionner</button>
+            </div>
+            <div class="card-body">
+                @if (_passage.Paiements.Count == 0)
+                {
+                    <label class="form-label small fw-semibold">Mode de paiement unique</label>
+                    <select class="form-select form-select-sm" @bind="_passage.ModePaiement">
+                        <option value="">-- Sélectionner le mode de paiement --</option>
+                        <option value="CB">💳 Carte bancaire</option>
+                        <option value="Espèces">💵 Espèces</option>
+                        <option value="Chèque">📝 Chèque</option>
+                        <option value="Virement">🏦 Virement</option>
+                        <option value="Carte cadeau">🎁 Carte cadeau</option>
+                    </select>
+                    <small class="text-muted d-block mt-1">
+                        <i class="bi bi-info-circle me-1"></i>Cliquez sur « Fractionner » pour utiliser plusieurs moyens de paiement.
+                    </small>
+                }
+                else
+                {
+                    <label class="form-label small fw-semibold">Paiement fractionné</label>
+                    <small class="text-muted d-block mb-2">Répartissez le total entre plusieurs modes de paiement.</small>
+                    @for (int i = 0; i < _passage.Paiements.Count; i++)
+                    {
+                        var idx = i;
+                        var pay = _passage.Paiements[idx];
+                        <div class="border rounded p-2 mb-2 bg-light">
+                            <div class="d-flex justify-content-between align-items-center mb-1">
+                                <label class="form-label small mb-0 fw-semibold">Paiement @(idx + 1)</label>
+                                <button class="btn btn-sm text-danger p-0" @onclick="() => RemovePaiement(idx)" title="Supprimer ce paiement"><i class="bi bi-x-lg"></i></button>
+                            </div>
+                            <div class="row g-2">
+                                <div class="col-6">
+                                    <label class="form-label small text-muted mb-0">Mode</label>
+                                    <select class="form-select form-select-sm" value="@pay.Mode"
+                                            @onchange="(e) => OnPaiementModeChanged(idx, e)">
+                                        <option value="CB">💳 CB</option>
+                                        <option value="Espèces">💵 Espèces</option>
+                                        <option value="Chèque">📝 Chèque</option>
+                                        <option value="Virement">🏦 Virement</option>
+                                        <option value="Carte cadeau">🎁 Carte cadeau</option>
+                                    </select>
+                                </div>
+                                <div class="col-6">
+                                    <label class="form-label small text-muted mb-0">Montant (€)</label>
+                                    <input type="number" class="form-control form-control-sm" @bind="pay.Montant" step="0.01" min="0" placeholder="0.00" />
+                                </div>
+                            </div>
+                            @if (pay.Mode == "Carte cadeau")
+                            {
+                                <div class="mt-2">
+                                    <label class="form-label small text-muted mb-0">Carte cadeau à utiliser</label>
+                                    @if (_cartesClient.Count == 0)
+                                    {
+                                        <div class="alert alert-warning small py-1 px-2 mb-0 mt-1">
+                                            <i class="bi bi-exclamation-triangle me-1"></i>
+                                            @(string.IsNullOrEmpty(_passage.ClientGuid)
+                                                ? "Sélectionnez d'abord un client."
+                                                : "Ce client n'a aucune carte cadeau active.")
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <select class="form-select form-select-sm" @bind="pay.CarteCadeauGuid">
+                                            <option value="">-- Sélectionner une carte --</option>
+                                            @foreach (var cc in GetCartesDisponiblesPour(idx))
+                                            {
+                                                <option value="@cc.Guid">
+                                                    @(cc.Type == "fidelite" ? "🎖️ Fidélité" : "🎁 Achat") — Solde : @cc.SoldeRestant.ToString("N2")€
+                                                    @(string.IsNullOrEmpty(cc.Origine) ? "" : $" ({cc.Origine})")
+                                                </option>
+                                            }
+                                        </select>
+                                        @if (GetSelectedPayCarte(pay.CarteCadeauGuid) is CarteCadeau selCarte)
+                                        {
+                                            <small class="text-muted">
+                                                <i class="bi bi-wallet2 me-1"></i>Solde disponible : <strong>@selCarte.SoldeRestant.ToString("N2") €</strong>
+                                                @if (pay.Montant > selCarte.SoldeRestant)
+                                                {
+                                                    <span class="text-danger ms-1"><i class="bi bi-exclamation-triangle"></i> Montant supérieur au solde !</span>
+                                                }
+                                            </small>
+                                        }
+                                    }
+                                </div>
+                            }
+                        </div>
+                    }
+                    <hr class="my-2" />
+                    <div class="d-flex justify-content-between small fw-semibold">
+                        <span>Total des paiements :</span>
+                        <strong class="@(_totalPaiements != _totalPassage ? "text-danger" : "text-success")">
+                            @_totalPaiements.ToString("N2") € / @_totalPassage.ToString("N2") €
+                        </strong>
+                    </div>
+                    @if (Math.Abs(_totalPaiements - _totalPassage) > 0.01m)
+                    {
+                        <small class="text-danger d-block mt-1">
+                            <i class="bi bi-exclamation-triangle me-1"></i>
+                            @(_totalPaiements < _totalPassage
+                                ? $"Il manque {(_totalPassage - _totalPaiements):N2} € pour couvrir le total."
+                                : $"Les paiements dépassent le total de {(_totalPaiements - _totalPassage):N2} €.")
+                        </small>
+                    }
+                }
+
+                @* Carte cadeau (mode simple) *@
+                @if (_passage.Paiements.Count == 0 && _passage.ModePaiement == "Carte cadeau")
+                {
+                    <div class="mt-3">
+                        <label class="form-label small fw-semibold">Carte cadeau à utiliser</label>
+                        @if (_cartesClient.Count == 0)
+                        {
+                            <div class="alert alert-warning small py-1 px-2 mb-0">
+                                <i class="bi bi-exclamation-triangle me-1"></i>
+                                @(string.IsNullOrEmpty(_passage.ClientGuid)
+                                    ? "Sélectionnez d'abord un client."
+                                    : "Ce client n'a aucune carte cadeau active.")
+                            </div>
+                        }
+                        else
+                        {
+                            <select class="form-select form-select-sm" @bind="_passage.CarteCadeauGuid">
+                                <option value="">-- Sélectionner une carte --</option>
+                                @foreach (var cc in _cartesClient)
+                                {
+                                    <option value="@cc.Guid">
+                                        @(cc.Type == "fidelite" ? "🎖️ Fidélité" : "🎁 Achat") — Solde : @cc.SoldeRestant.ToString("N2")€ (@cc.DateCreation)
+                                    </option>
+                                }
+                            </select>
+                            <div class="mt-2">
+                                <label class="form-label small fw-semibold">Montant à utiliser (€)</label>
+                                <input type="number" class="form-control form-control-sm"
+                                       @bind="_passage.MontantCarteUtilisee" step="0.01" min="0" />
+                                @if (_selectedCarte != null)
+                                {
+                                    <small class="text-muted">
+                                        <i class="bi bi-wallet2 me-1"></i>Solde actuel : <strong>@_selectedCarte.SoldeRestant.ToString("N2") €</strong>
+                                        @if (_passage.MontantCarteUtilisee > _selectedCarte.SoldeRestant)
+                                        {
+                                            <span class="text-danger ms-1"><i class="bi bi-exclamation-triangle"></i> Dépasse le solde !</span>
+                                        }
+                                    </small>
+                                }
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+        </div>
+
+        @* Récapitulatif *@
+        <div class="card border-0 shadow-sm position-sticky" style="top:1rem;">
+            <div class="card-header pt-3"><h5 class="mb-0"><i class="bi bi-receipt me-2"></i>Récapitulatif</h5></div>
+            <div class="card-body">
+                <div class="d-flex justify-content-between mb-2">
+                    <span><i class="bi bi-scissors me-1 text-gold"></i>Prestations</span>
+                    <strong>@_passage.Prestations.Sum(p => p.Prix).ToString("N2") €</strong>
+                </div>
+                <div class="d-flex justify-content-between mb-2">
+                    <span><i class="bi bi-bag me-1 text-gold"></i>Produits vendus</span>
+                    <strong>@_passage.ProduitsVendus.Sum(p => p.Total).ToString("N2") €</strong>
+                </div>
+                <hr />
+                <div class="d-flex justify-content-between mb-3">
+                    <span class="fs-5 fw-bold">Total</span>
+                    <span class="fs-5 fw-bold text-gold">@_totalPassage.ToString("N2") €</span>
+                </div>
+
+                <button class="btn btn-gold w-100" @onclick="SaveAsync" disabled="@_saving">
+                    @if (_saving) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                    <i class="bi bi-check-lg me-1"></i> Enregistrer le passage
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter] public string? Guid { get; set; }
+
+    private Passage _passage = new() { Date = DateTime.Now.ToString("dd/MM/yyyy") };
+    private List<Client> _clients = [];
+    private List<Client> _clientsFiltered = [];
+    private List<Prestation> _prestationsCatalogue = [];
+    private List<Produit> _produitsCatalogue = [];
+    private List<CarteCadeau> _cartesClient = [];
+    private bool _isEdit, _saving, _showClientDropdown, _conflitDetecte;
+    private string _alert = "", _alertType = "info";
+    private string _clientSearchText = "";
+    private CarteCadeau? _fideliteCarte;
+
+    private decimal _totalPassage => _passage.Prestations.Sum(p => p.Prix) + _passage.ProduitsVendus.Sum(p => p.Total);
+    private decimal _totalPaiements => _passage.Paiements.Sum(p => p.Montant);
+    private CarteCadeau? _selectedCarte => _cartesClient.FirstOrDefault(c => c.Guid == _passage.CarteCadeauGuid);
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await AuthService.InitializeAsync();
+            if (!AuthService.IsSignedIn || !AuthService.CanWrite) { Nav.NavigateTo("login"); return; }
+
+            _clients = await ClientSvc.GetAllAsync();
+            _prestationsCatalogue = await PrestaSvc.GetActivesAsync();
+            _produitsCatalogue = await ProduitSvc.GetActifsAsync();
+
+            if (!string.IsNullOrEmpty(Guid))
+            {
+                _isEdit = true;
+                var p = await PassageSvc.GetByGuidAsync(Guid);
+                if (p != null)
+                {
+                    _passage = p;
+                    var client = _clients.FirstOrDefault(c => c.Guid == p.ClientGuid);
+                    _clientSearchText = client?.NomComplet ?? "";
+                    await LoadCartesClient();
+                }
+                else { Nav.NavigateTo("passages"); return; }
+            }
+            StateHasChanged();
+        }
+    }
+
+    private void OnClientSearch(ChangeEventArgs e)
+    {
+        _clientSearchText = e.Value?.ToString() ?? "";
+        _showClientDropdown = true;
+        if (string.IsNullOrWhiteSpace(_clientSearchText))
+        {
+            _clientsFiltered = _clients.Take(20).ToList();
+            _passage.ClientGuid = "";
+        }
+        else
+        {
+            var t = _clientSearchText.ToLower();
+            _clientsFiltered = _clients
+                .Where(c => c.NomComplet.Contains(t, StringComparison.OrdinalIgnoreCase)
+                    || c.NumeroTelephone.Contains(t, StringComparison.OrdinalIgnoreCase)
+                    || c.Email.Contains(t, StringComparison.OrdinalIgnoreCase))
+                .Take(20)
+                .ToList();
+        }
+    }
+
+    private async Task SelectClient(Client c)
+    {
+        _passage.ClientGuid = c.Guid;
+        _clientSearchText = c.NomComplet;
+        _showClientDropdown = false;
+        await LoadCartesClient();
+        StateHasChanged();
+    }
+
+    private void ClearClient()
+    {
+        _passage.ClientGuid = "";
+        _clientSearchText = "";
+        _cartesClient = [];
+    }
+
+    private async Task LoadCartesClient()
+    {
+        if (!string.IsNullOrEmpty(_passage.ClientGuid))
+        {
+            var cartes = await CarteSvc.GetByClientAsync(_passage.ClientGuid);
+            _cartesClient = cartes.Where(c => c.EstUtilisable).ToList();
+        }
+        else
+        {
+            _cartesClient = [];
+        }
+    }
+
+    private void AddPrestation() => _passage.Prestations.Add(new PassagePrestation());
+    private void AddProduitVendu() => _passage.ProduitsVendus.Add(new PassageProduitVendu { Quantite = 1 });
+    private void AddProduitConseille() => _passage.ProduitsConseilles.Add(new PassageProduitConseille());
+
+    private void AddPaiement()
+    {
+        if (_passage.Paiements.Count == 0 && !string.IsNullOrEmpty(_passage.ModePaiement))
+        {
+            // Migrer le mode simple vers multi-paiement
+            _passage.Paiements.Add(new PaiementDetail { Mode = _passage.ModePaiement, Montant = _totalPassage });
+            _passage.ModePaiement = "";
+            _passage.CarteCadeauGuid = "";
+            _passage.MontantCarteUtilisee = 0;
+        }
+        else
+        {
+            var restant = _totalPassage - _totalPaiements;
+            _passage.Paiements.Add(new PaiementDetail { Mode = "CB", Montant = Math.Max(0, restant) });
+        }
+    }
+
+    private void RemovePaiement(int idx)
+    {
+        if (idx >= 0 && idx < _passage.Paiements.Count)
+            _passage.Paiements.RemoveAt(idx);
+        // Si plus aucun paiement fractionné, revenir au mode simple
+        if (_passage.Paiements.Count == 0)
+            _passage.ModePaiement = "";
+    }
+
+    private void OnPaiementModeChanged(int idx, ChangeEventArgs e)
+    {
+        var mode = e.Value?.ToString() ?? "CB";
+        if (idx < _passage.Paiements.Count)
+        {
+            _passage.Paiements[idx].Mode = mode;
+            // Réinitialiser le GUID carte si on change de mode
+            if (mode != "Carte cadeau")
+                _passage.Paiements[idx].CarteCadeauGuid = "";
+        }
+    }
+
+    /// <summary>Retourne la carte cadeau sélectionnée pour un GUID donné.</summary>
+    private CarteCadeau? GetSelectedPayCarte(string? carteGuid)
+        => string.IsNullOrEmpty(carteGuid) ? null : _cartesClient.FirstOrDefault(c => c.Guid == carteGuid);
+
+    /// <summary>Retourne les cartes cadeaux disponibles pour un slot de paiement donné (excluant celles déjà sélectionnées par d'autres slots).</summary>
+    private List<CarteCadeau> GetCartesDisponiblesPour(int slotIdx)
+    {
+        var cartesUtilisees = _passage.Paiements
+            .Where((p, i) => i != slotIdx && p.Mode == "Carte cadeau" && !string.IsNullOrEmpty(p.CarteCadeauGuid))
+            .Select(p => p.CarteCadeauGuid)
+            .ToHashSet();
+
+        return _cartesClient.Where(c => !cartesUtilisees.Contains(c.Guid) || c.Guid == (_passage.Paiements.ElementAtOrDefault(slotIdx)?.CarteCadeauGuid ?? "")).ToList();
+    }
+
+    private void OnPrestationSelected(int idx, ChangeEventArgs e)
+    {
+        var guid = e.Value?.ToString() ?? "";
+        var cat = _prestationsCatalogue.FirstOrDefault(p => p.Guid == guid);
+        if (cat != null && idx < _passage.Prestations.Count)
+        {
+            _passage.Prestations[idx].PrestationId = cat.Guid;
+            _passage.Prestations[idx].Nom = cat.Nom;
+            _passage.Prestations[idx].Prix = cat.PrixDefaut;
+            _passage.Prestations[idx].DureeMinutes = cat.DureeMinutes;
+        }
+    }
+
+    private void OnProduitVenduSelected(int idx, ChangeEventArgs e)
+    {
+        var guid = e.Value?.ToString() ?? "";
+        var prod = _produitsCatalogue.FirstOrDefault(p => p.Guid == guid);
+        if (prod != null && idx < _passage.ProduitsVendus.Count)
+        {
+            _passage.ProduitsVendus[idx].ProduitId = prod.Guid;
+            _passage.ProduitsVendus[idx].Nom = prod.Nom;
+            _passage.ProduitsVendus[idx].PrixUnitaire = prod.PrixVente;
+        }
+    }
+
+    private void OnProduitConseilleSelected(int idx, ChangeEventArgs e)
+    {
+        var guid = e.Value?.ToString() ?? "";
+        if (string.IsNullOrEmpty(guid))
+        {
+            // Texte libre
+            if (idx < _passage.ProduitsConseilles.Count)
+            {
+                _passage.ProduitsConseilles[idx].ProduitId = "";
+                _passage.ProduitsConseilles[idx].Nom = "";
+            }
+        }
+        else
+        {
+            var prod = _produitsCatalogue.FirstOrDefault(p => p.Guid == guid);
+            if (prod != null && idx < _passage.ProduitsConseilles.Count)
+            {
+                _passage.ProduitsConseilles[idx].ProduitId = prod.Guid;
+                _passage.ProduitsConseilles[idx].Nom = prod.Nom;
+                _passage.ProduitsConseilles[idx].PrixIndicatif = prod.PrixVente;
+            }
+        }
+    }
+
+    private async Task SaveAsync() => await DoSaveAsync(false);
+    private async Task ForcerSauvegarde() => await DoSaveAsync(true);
+
+    private async Task DoSaveAsync(bool forceWrite)
+    {
+        if (string.IsNullOrEmpty(_passage.ClientGuid)) { _alert = "Sélectionnez un client."; _alertType = "warning"; return; }
+        if (string.IsNullOrEmpty(_passage.Date)) { _alert = "La date est requise."; _alertType = "warning"; return; }
+        if (_passage.Prestations.Count == 0 && _passage.ProduitsVendus.Count == 0) 
+        { _alert = "Ajoutez au moins une prestation ou un produit."; _alertType = "warning"; return; }
+
+        // Vérifier les paiements multi-moyens
+        if (_passage.Paiements.Count > 0)
+        {
+            var diff = Math.Abs(_totalPaiements - _totalPassage);
+            if (diff > 0.01m)
+            {
+                _alert = $"Le total des paiements ({_totalPaiements:N2}€) ne correspond pas au total du passage ({_totalPassage:N2}€).";
+                _alertType = "warning";
+                return;
+            }
+            // Mettre à jour le mode de paiement principal pour la rétrocompatibilité
+            _passage.ModePaiement = string.Join(" + ", _passage.Paiements.Select(p => p.Mode).Distinct());
+        }
+
+        _saving = true; _conflitDetecte = false; StateHasChanged();
+        try
+        {
+            _passage.RecalculerTotal();
+
+            if (_isEdit)
+            {
+                var success = await PassageSvc.UpdateAsync(_passage, forceWrite);
+                if (!success) { _conflitDetecte = true; _saving = false; StateHasChanged(); return; }
+            }
+            else
+            {
+                await PassageSvc.AddAsync(_passage);
+            }
+
+            // Enregistrer les mouvements de stock pour les produits vendus
+            foreach (var pv in _passage.ProduitsVendus)
+            {
+                if (!string.IsNullOrEmpty(pv.ProduitId))
+                    await MouvementSvc.EnregistrerSortieAsync(pv.ProduitId, pv.Quantite, pv.PrixUnitaire, _passage.Guid);
+            }
+
+            // Utiliser les cartes cadeaux
+            if (_passage.Paiements.Count > 0)
+            {
+                foreach (var pay in _passage.Paiements.Where(p => p.Mode == "Carte cadeau" && !string.IsNullOrEmpty(p.CarteCadeauGuid)))
+                {
+                    await CarteSvc.UtiliserAsync(pay.CarteCadeauGuid, pay.Montant);
+                }
+            }
+            else if (!string.IsNullOrEmpty(_passage.CarteCadeauGuid) && _passage.MontantCarteUtilisee > 0)
+            {
+                await CarteSvc.UtiliserAsync(_passage.CarteCadeauGuid, _passage.MontantCarteUtilisee);
+            }
+
+            // Vérifier fidélité
+            _fideliteCarte = await FideliteSvc.VerifierEtGenererAsync(_passage.ClientGuid);
+
+            if (_fideliteCarte == null)
+                Nav.NavigateTo("passages");
+            else
+                StateHasChanged();
+        }
+        catch (Exception ex) { _alert = $"Erreur: {ex.Message}"; _alertType = "danger"; }
+        finally { _saving = false; StateHasChanged(); }
+    }
+
+    private async Task GoBack() => await JSRuntime.InvokeVoidAsync("navigateBack");
+
+    private async Task RechargerDonnees()
+    {
+        if (!string.IsNullOrEmpty(Guid))
+        {
+            var p = await PassageSvc.GetByGuidAsync(Guid);
+            if (p != null) _passage = p;
+            _conflitDetecte = false;
+            StateHasChanged();
+        }
+    }
+}

@@ -1,0 +1,35 @@
+@* Barre de recherche réutilisable *@
+
+<div class="input-group">
+    <span class="input-group-text bg-white">
+        <i class="bi bi-search"></i>
+    </span>
+    <input type="text" class="form-control border-start-0"
+           placeholder="@Placeholder"
+           value="@Value"
+           @oninput="OnInput" />
+    @if (!string.IsNullOrEmpty(Value))
+    {
+        <button class="btn btn-outline-secondary" @onclick="Clear">
+            <i class="bi bi-x-lg"></i>
+        </button>
+    }
+</div>
+
+@code {
+    [Parameter] public string Value { get; set; } = "";
+    [Parameter] public string Placeholder { get; set; } = "Rechercher...";
+    [Parameter] public EventCallback<string> ValueChanged { get; set; }
+
+    private async Task OnInput(ChangeEventArgs e)
+    {
+        Value = e.Value?.ToString() ?? "";
+        await ValueChanged.InvokeAsync(Value);
+    }
+
+    private async Task Clear()
+    {
+        Value = "";
+        await ValueChanged.InvokeAsync(Value);
+    }
+}

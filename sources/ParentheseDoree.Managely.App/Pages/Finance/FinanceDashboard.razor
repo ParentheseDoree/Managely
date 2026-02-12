@@ -1,0 +1,626 @@
+@page "/finance"
+@inject FinanceService FinanceSvc
+@inject AjustementService AjustSvc
+@inject GoogleAuthService AuthService
+@inject NavigationManager Nav
+
+<PageTitle>Finance - Managely</PageTitle>
+
+<div class="page-header">
+    <div>
+        <h1><i class="bi bi-graph-up me-2"></i>Finance</h1>
+        <p>Tableau de bord financier</p>
+    </div>
+    <div class="d-flex gap-2 align-items-center flex-wrap">
+        <select class="form-select form-select-sm" style="width:auto;" @bind="_mois" @bind:after="LoadAsync">
+            @for (int m = 1; m <= 12; m++)
+            {
+                <option value="@m">@MoisNoms[m - 1]</option>
+            }
+        </select>
+        <select class="form-select form-select-sm" style="width:auto;" @bind="_annee" @bind:after="LoadAsync">
+            @for (int y = DateTime.Now.Year; y >= DateTime.Now.Year - 5; y--)
+            {
+                <option value="@y">@y</option>
+            }
+        </select>
+        @if (AuthService.CanWrite)
+        {
+            <button class="btn btn-sm btn-outline-gold" @onclick="ShowAddAjustement">
+                <i class="bi bi-plus-lg me-1"></i>Ajustement
+            </button>
+        }
+        <button class="btn btn-outline-secondary btn-sm" @onclick="LoadAsync" disabled="@_loading">
+            <i class="bi bi-arrow-clockwise @(_loading ? "spin" : "")"></i>
+        </button>
+    </div>
+</div>
+
+<AlertMessage Message="@_alert" Type="@_alertType" OnDismiss="() => _alert = string.Empty" />
+
+@if (_loading)
+{
+    <LoadingSpinner Message="Calcul des statistiques..." />
+}
+else
+{
+    @* KPIs du mois/année sélectionné *@
+    <div class="row g-3 mb-4">
+        <div class="col-6 col-lg-3">
+            <StatCard Value="@FormatEuro(_stats.CaTotal)" Label="@($"CA {_annee}")" Icon="bi-currency-euro" Color="gold" />
+        </div>
+        <div class="col-6 col-lg-3">
+            <StatCard Value="@FormatEuro(_stats.CaMoisEnCours)" Label="@($"CA {MoisNoms[_mois - 1]}")" Icon="bi-calendar-month" Color="success" />
+        </div>
+        <div class="col-6 col-lg-3">
+            <StatCard Value="@FormatEuro(_stats.CaAujourdhui)" Label="CA aujourd'hui" Icon="bi-calendar-day" Color="primary" />
+        </div>
+        <div class="col-6 col-lg-3">
+            <StatCard Value="@_stats.PassagesMoisEnCours.ToString()" Label="@($"Passages {MoisLabels[_mois - 1]}")" Icon="bi-people" Color="info" />
+        </div>
+    </div>
+
+    @* Bilan détaillé du mois *@
+    @if (_bilan != null)
+    {
+        <div class="card border-0 shadow-sm mb-4">
+            <div class="card-header pt-3">
+                <h5 class="mb-0"><i class="bi bi-clipboard-data me-2 text-gold"></i>Bilan financier — @MoisNoms[_mois - 1] @_annee</h5>
+            </div>
+            <div class="card-body">
+                <div class="row g-4">
+                    @* Colonne 1 : Chiffre d'affaires & Encaissements *@
+                    <div class="col-md-4">
+                        <h6 class="text-success mb-3"><i class="bi bi-arrow-up-circle-fill me-1"></i>Revenus</h6>
+                        <table class="table table-sm mb-0">
+                            <tbody>
+                                @* CA des passages = identique au total page Passages *@
+                                <tr>
+                                    <td colspan="2" class="small text-muted fw-semibold pt-0 pb-1 border-0">CA des passages (= total page Passages)</td>
+                                </tr>
+                                <tr>
+                                    <td class="ps-3"><i class="bi bi-scissors text-gold me-1"></i>Prestations</td>
+                                    <td class="text-end fw-bold text-success">@FormatEuro(_bilan.CaPrestations)</td>
+                                </tr>
+                                <tr>
+                                    <td class="ps-3"><i class="bi bi-bag text-gold me-1"></i>Produits vendus</td>
+                                    <td class="text-end fw-bold text-success">@FormatEuro(_bilan.CaProduits)</td>
+                                </tr>
+                                <tr class="table-light">
+                                    <td class="ps-3"><strong>Sous-total CA passages</strong></td>
+                                    <td class="text-end fw-bold">@FormatEuro(_bilan.CaPassages)</td>
+                                </tr>
+
+                                @* Ventes de cartes cadeaux *@
+                                @if (_bilan.CaCartesVendues > 0)
+                                {
+                                    <tr>
+                                        <td><i class="bi bi-gift text-info me-1"></i>Cartes cadeaux vendues</td>
+                                        <td class="text-end fw-bold text-success">+@FormatEuro(_bilan.CaCartesVendues)</td>
+                                    </tr>
+                                }
+
+                                @* Déductions pour paiements par cartes *@
+                                @if (_bilan.MontantCartesTotalUtilisees > 0)
+                                {
+                                    <tr>
+                                        <td colspan="2" class="small text-muted fw-semibold pt-2 pb-1 border-0">Paiements par cartes (à déduire)</td>
+                                    </tr>
+                                    @if (_bilan.MontantCartesAchatUtilisees > 0)
+                                    {
+                                        <tr>
+                                            <td class="ps-3"><i class="bi bi-wallet2 text-muted me-1"></i>Par cartes achetées <small class="text-muted">(déjà encaissé)</small></td>
+                                            <td class="text-end fw-bold text-warning">-@FormatEuro(_bilan.MontantCartesAchatUtilisees)</td>
+                                        </tr>
+                                    }
+                                    @if (_bilan.MontantCartesFideliteUtilisees > 0)
+                                    {
+                                        <tr>
+                                            <td class="ps-3"><i class="bi bi-heart text-muted me-1"></i>Par cartes fidélité <small class="text-muted">(services offerts)</small></td>
+                                            <td class="text-end fw-bold text-warning">-@FormatEuro(_bilan.MontantCartesFideliteUtilisees)</td>
+                                        </tr>
+                                    }
+                                }
+
+                                @if (_bilan.RecettesAjustements > 0)
+                                {
+                                    <tr>
+                                        <td><i class="bi bi-pencil-square text-info me-1"></i>Ajustements manuels</td>
+                                        <td class="text-end fw-bold text-info">+@FormatEuro(_bilan.RecettesAjustements)</td>
+                                    </tr>
+                                }
+
+                                <tr class="table-success">
+                                    <td><strong>Total encaissé</strong></td>
+                                    <td class="text-end fw-bold fs-6 text-success">@FormatEuro(_bilan.TotalEncaissements)</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    @* Colonne 2 : Charges / Dépenses *@
+                    <div class="col-md-4">
+                        <h6 class="text-danger mb-3"><i class="bi bi-arrow-down-circle-fill me-1"></i>Charges / Dépenses</h6>
+                        <table class="table table-sm mb-0">
+                            <tbody>
+                                <tr>
+                                    <td><i class="bi bi-box-seam text-warning me-1"></i>Achats produits <small class="text-muted">(fournisseurs)</small></td>
+                                    <td class="text-end fw-bold text-danger">@FormatEuro(_bilan.ChargesAchatsProduits)</td>
+                                </tr>
+                                @if (_bilan.DepensesAjustements > 0)
+                                {
+                                    <tr>
+                                        <td><i class="bi bi-pencil-square text-info me-1"></i>Dépenses manuelles</td>
+                                        <td class="text-end fw-bold text-danger">@FormatEuro(_bilan.DepensesAjustements)</td>
+                                    </tr>
+                                }
+                                <tr class="table-danger">
+                                    <td><strong>Total charges</strong></td>
+                                    <td class="text-end fw-bold fs-6 text-danger">@FormatEuro(_bilan.TotalDepenses)</td>
+                                </tr>
+                            </tbody>
+                        </table>
+
+                        @* Info fidélité *@
+                        @if (_bilan.MontantCartesFideliteUtilisees > 0)
+                        {
+                            <div class="alert alert-warning small py-2 px-3 mt-3 mb-0">
+                                <i class="bi bi-info-circle me-1"></i>
+                                <strong>@FormatEuro(_bilan.MontantCartesFideliteUtilisees)</strong> de services offerts via fidélité
+                                <br /><span class="text-muted">Déjà déduit des encaissements ci-contre.</span>
+                            </div>
+                        }
+                    </div>
+
+                    @* Colonne 3 : Résultat *@
+                    <div class="col-md-4">
+                        <h6 class="text-gold mb-3"><i class="bi bi-trophy-fill me-1"></i>Résultat</h6>
+                        <div class="card @(_bilan.Benefice >= 0 ? "bg-success" : "bg-danger") bg-opacity-10 p-4 text-center mb-3">
+                            <div class="fs-2 fw-bold @(_bilan.Benefice >= 0 ? "text-success" : "text-danger")">
+                                @(_bilan.Benefice >= 0 ? "+" : "")@_bilan.Benefice.ToString("N2") €
+                            </div>
+                            <small class="text-muted">Bénéfice net</small>
+                        </div>
+                        <div class="small">
+                            <div class="d-flex justify-content-between mb-1">
+                                <span class="text-muted">Passages</span>
+                                <strong>@_bilan.NbPassages</strong>
+                            </div>
+                            <div class="d-flex justify-content-between mb-1">
+                                <span class="text-muted">CA passages</span>
+                                <strong>@_bilan.CaPassages.ToString("N2") €</strong>
+                            </div>
+                            @if (_bilan.MontantCartesTotalUtilisees > 0)
+                            {
+                                <div class="d-flex justify-content-between mb-1">
+                                    <span class="text-muted">Payé par cartes</span>
+                                    <strong class="text-warning">@_bilan.MontantCartesTotalUtilisees.ToString("N2") €</strong>
+                                </div>
+                            }
+                            @if (_bilan.NbPassages > 0)
+                            {
+                                <div class="d-flex justify-content-between">
+                                    <span class="text-muted">Panier moyen</span>
+                                    <strong class="text-gold">@(_bilan.CaPassages / _bilan.NbPassages).ToString("N2") €</strong>
+                                </div>
+                            }
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+
+    @* Graphiques *@
+    <div class="row g-4">
+        <div class="col-lg-8">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header pt-3">
+                    <h5 class="mb-0"><i class="bi bi-bar-chart me-2 text-gold"></i>CA mensuel @_annee</h5>
+                </div>
+                <div class="card-body">
+                    <ChartComponent CanvasId="chart-ca-mensuel" ConfigJson="@_chartCaMensuel" Height="300" />
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-4">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header pt-3">
+                    <h5 class="mb-0"><i class="bi bi-pie-chart me-2 text-gold"></i>Répartition @MoisLabels[_mois - 1] @_annee</h5>
+                </div>
+                <div class="card-body">
+                    @if (_totalPrestations == 0 && _totalProduits == 0)
+                    {
+                        <div class="text-center py-5 text-muted">
+                            <i class="bi bi-pie-chart fs-1 d-block mb-2 opacity-25"></i>
+                            Aucune donnée pour cette période
+                        </div>
+                    }
+                    else
+                    {
+                        <ChartComponent CanvasId="chart-repartition" ConfigJson="@_chartRepartition" Height="250" />
+                    }
+                    <div class="text-center mt-3 small">
+                        <span class="text-success"><i class="bi bi-circle-fill me-1" style="font-size:0.5rem;color:#d4a574 !important;"></i>Prestations: @_totalPrestations.ToString("N2") €</span>
+                        <span class="ms-3 text-primary"><i class="bi bi-circle-fill me-1" style="font-size:0.5rem;color:#6c9bd2 !important;"></i>Produits: @_totalProduits.ToString("N2") €</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @* Répartition paiements *@
+    @if (_repartitionPaiements.Count > 0)
+    {
+        <div class="row g-4 mt-2">
+            <div class="col-12">
+                <div class="card border-0 shadow-sm">
+                    <div class="card-header pt-3">
+                        <h5 class="mb-0"><i class="bi bi-credit-card me-2 text-gold"></i>Répartition par mode de paiement — @MoisNoms[_mois - 1] @_annee</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row g-3">
+                            @foreach (var kv in _repartitionPaiements.OrderByDescending(x => x.Value))
+                            {
+                                var pct = _bilan != null && _bilan.CaPassages > 0
+                                    ? (kv.Value / _bilan.CaPassages * 100)
+                                    : 0;
+                                <div class="col-md-3 col-6">
+                                    <div class="text-center p-3 border rounded">
+                                        <div class="fw-bold text-gold fs-5">@kv.Value.ToString("N2") €</div>
+                                        <div class="small text-muted">@kv.Key</div>
+                                        <div class="progress mt-2" style="height:4px;">
+                                            <div class="progress-bar bg-gold" style="width:@pct.ToString("N0")%"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+
+    @* Top prestations et produits *@
+    <div class="row g-4 mt-2">
+        <div class="col-lg-6">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header pt-3">
+                    <h5 class="mb-0"><i class="bi bi-trophy me-2 text-gold"></i>Top Prestations — @MoisLabels[_mois - 1] @_annee</h5>
+                </div>
+                <div class="card-body p-0">
+                    @if (_topPrestations.Count == 0)
+                    {
+                        <p class="p-3 text-muted mb-0">Aucune prestation sur cette période.</p>
+                    }
+                    else
+                    {
+                        <div class="table-responsive">
+                            <table class="table table-sm mb-0">
+                                <thead>
+                                    <tr><th>#</th><th>Prestation</th><th class="text-center">Nb</th><th class="text-end">Total</th></tr>
+                                </thead>
+                                <tbody>
+                                    @for (int i = 0; i < _topPrestations.Count; i++)
+                                    {
+                                        var tp = _topPrestations[i];
+                                        <tr>
+                                            <td><span class="badge bg-gold-subtle text-gold">@(i + 1)</span></td>
+                                            <td>@tp.Nom</td>
+                                            <td class="text-center"><span class="badge bg-primary">@tp.Count</span></td>
+                                            <td class="text-end fw-bold text-success">@tp.Total.ToString("N2") €</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-6">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header pt-3">
+                    <h5 class="mb-0"><i class="bi bi-star me-2 text-gold"></i>Top Produits — @MoisLabels[_mois - 1] @_annee</h5>
+                </div>
+                <div class="card-body p-0">
+                    @if (_topProduits.Count == 0)
+                    {
+                        <p class="p-3 text-muted mb-0">Aucun produit vendu sur cette période.</p>
+                    }
+                    else
+                    {
+                        <div class="table-responsive">
+                            <table class="table table-sm mb-0">
+                                <thead>
+                                    <tr><th>#</th><th>Produit</th><th class="text-center">Qté</th><th class="text-end">Total</th></tr>
+                                </thead>
+                                <tbody>
+                                    @for (int i = 0; i < _topProduits.Count; i++)
+                                    {
+                                        var tp = _topProduits[i];
+                                        <tr>
+                                            <td><span class="badge bg-gold-subtle text-gold">@(i + 1)</span></td>
+                                            <td>@tp.Nom</td>
+                                            <td class="text-center"><span class="badge bg-info">@tp.Quantite</span></td>
+                                            <td class="text-end fw-bold text-success">@tp.Total.ToString("N2") €</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @* Ajustements manuels du mois *@
+    @if (_ajustementsPeriode.Count > 0)
+    {
+        <div class="card border-0 shadow-sm mt-4">
+            <div class="card-header pt-3">
+                <h5 class="mb-0"><i class="bi bi-pencil-square me-2 text-gold"></i>Ajustements manuels — @MoisNoms[_mois - 1] @_annee</h5>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-sm mb-0">
+                        <thead><tr><th>Date</th><th>Type</th><th>Description</th><th class="text-end">Montant</th><th></th></tr></thead>
+                        <tbody>
+                            @foreach (var a in _ajustementsPeriode)
+                            {
+                                <tr>
+                                    <td>@a.Date</td>
+                                    <td><span class="badge @(a.EstRecette ? "bg-success" : "bg-danger")">@a.Type</span></td>
+                                    <td>@a.Description</td>
+                                    <td class="text-end fw-bold @(a.EstRecette ? "text-success" : "text-danger")">
+                                        @(a.EstRecette ? "+" : "")@a.Montant.ToString("N2") €
+                                    </td>
+                                    <td>
+                                        @if (AuthService.CanWrite)
+                                        {
+                                            <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteAjustement(a)">
+                                                <i class="bi bi-trash"></i>
+                                            </button>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    }
+}
+
+@* Modal ajout ajustement *@
+@if (_showAjustModal)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background-color:rgba(0,0,0,0.5);">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-pencil-square me-2"></i>Nouvel ajustement</h5>
+                    <button type="button" class="btn-close" @onclick="() => _showAjustModal = false"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Type d'ajustement <span class="text-danger">*</span></label>
+                            <select class="form-select" @bind="_editAjust.Type">
+                                <option value="recette">📈 Recette (entrée d'argent)</option>
+                                <option value="depense">📉 Dépense (sortie d'argent)</option>
+                                <option value="ajustement">🔄 Ajustement (correction)</option>
+                                <option value="perte">❌ Perte (dommage, vol...)</option>
+                                <option value="charge">💰 Charge (loyer, abonnement...)</option>
+                            </select>
+                            <small class="text-muted">Le signe sera appliqué automatiquement.</small>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Montant (€) <span class="text-danger">*</span></label>
+                            <input type="number" class="form-control" @bind="_editAjust.Montant" step="0.01" min="0" placeholder="0.00" />
+                            <small class="text-muted">Saisissez le montant en valeur absolue.</small>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label fw-semibold">Description <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" @bind="_editAjust.Description" placeholder="Ex: Achat matériel, remboursement client..." />
+                            <small class="text-muted">Décrivez brièvement la raison de cet ajustement.</small>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Date</label>
+                            <input type="text" class="form-control" @bind="_editAjust.Date" placeholder="JJ/MM/AAAA" />
+                            <small class="text-muted">Date de l'opération (aujourd'hui par défaut).</small>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Catégorie</label>
+                            <input type="text" class="form-control" @bind="_editAjust.Categorie" placeholder="Ex: Fournitures, Loyer..." />
+                            <small class="text-muted">Permet de regrouper les ajustements.</small>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label fw-semibold">Note complémentaire</label>
+                            <textarea class="form-control" rows="2" @bind="_editAjust.Note" placeholder="Détails supplémentaires (facultatif)..."></textarea>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" @onclick="() => _showAjustModal = false">Annuler</button>
+                    <button class="btn btn-gold" @onclick="SaveAjustement" disabled="@_savingAjust">
+                        @if (_savingAjust) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                        Enregistrer
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private bool _loading = true;
+    private int _annee = DateTime.Now.Year;
+    private int _mois = DateTime.Now.Month;
+    private DashboardStats _stats = new();
+    private BilanFinancier? _bilan;
+    private Dictionary<int, decimal> _revenusMensuels = new();
+    private Dictionary<string, decimal> _repartitionPaiements = new();
+    private decimal _totalPrestations, _totalProduits;
+    private List<(string Nom, int Count, decimal Total)> _topPrestations = [];
+    private List<(string Nom, int Quantite, decimal Total)> _topProduits = [];
+    private List<AjustementFinancier> _ajustementsPeriode = [];
+    private string _chartCaMensuel = "", _chartRepartition = "";
+    private bool _showAjustModal, _savingAjust;
+    private AjustementFinancier _editAjust = new();
+    private string _alert = "", _alertType = "info";
+
+    private static readonly string[] MoisNoms =
+        ["Janvier", "Février", "Mars", "Avril", "Mai", "Juin",
+         "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"];
+
+    private static readonly string[] MoisLabels =
+        ["Jan", "Fév", "Mar", "Avr", "Mai", "Jun", "Jul", "Aoû", "Sep", "Oct", "Nov", "Déc"];
+
+    private static string FormatEuro(decimal v) => $"{v:N2} \u20ac";
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await AuthService.InitializeAsync();
+            if (!AuthService.IsSignedIn || !AuthService.CanRead)
+            {
+                Nav.NavigateTo("login");
+                return;
+            }
+            await LoadAsync();
+        }
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        StateHasChanged();
+        try
+        {
+            // Stats filtrées par mois/année sélectionné
+            _stats = await FinanceSvc.GetStatsAsync(_mois, _annee);
+
+            // Bilan complet du mois
+            _bilan = await FinanceSvc.GetBilanAsync(_mois, _annee);
+
+            // Graphique CA annuel
+            _revenusMensuels = await FinanceSvc.GetRevenusMensuelsAsync(_annee);
+
+            // Répartition filtrée par mois+année
+            var (prest, prod) = await FinanceSvc.GetRepartitionAsync(_mois, _annee);
+            _totalPrestations = prest;
+            _totalProduits = prod;
+
+            // Répartition paiements du mois
+            _repartitionPaiements = await FinanceSvc.GetRepartitionPaiementsAsync(_mois, _annee);
+
+            // Tops filtrés par mois+année
+            _topPrestations = await FinanceSvc.GetTopPrestationsAsync(_mois, _annee, 8);
+            _topProduits = await FinanceSvc.GetTopProduitsAsync(_mois, _annee, 8);
+
+            // Ajustements filtrés par période
+            var allAjust = await AjustSvc.GetAllAsync();
+            _ajustementsPeriode = allAjust.Where(a =>
+                DateTime.TryParseExact(a.Date, ["dd/MM/yyyy", "yyyy-MM-dd"],
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    System.Globalization.DateTimeStyles.None, out var d)
+                && d.Month == _mois && d.Year == _annee
+            ).ToList();
+
+            BuildCharts();
+        }
+        catch (Exception ex)
+        {
+            _alert = $"Erreur: {ex.Message}"; _alertType = "danger";
+        }
+        finally
+        {
+            _loading = false;
+            StateHasChanged();
+        }
+    }
+
+    private void BuildCharts()
+    {
+        var ci = System.Globalization.CultureInfo.InvariantCulture;
+        var dataValues = Enumerable.Range(1, 12)
+            .Select(m => _revenusMensuels.GetValueOrDefault(m, 0));
+        var labels = string.Join(",", MoisLabels.Select(m => "\"" + m + "\""));
+        var data = string.Join(",", dataValues.Select(v => v.ToString(ci)));
+
+        // Barres colorées : le mois sélectionné est doré, les autres gris clair
+        var bgColors = string.Join(",", Enumerable.Range(1, 12).Select(m =>
+            m == _mois ? "\"rgba(212,165,116,0.8)\"" : "\"rgba(200,200,200,0.3)\""));
+        var borderColors = string.Join(",", Enumerable.Range(1, 12).Select(m =>
+            m == _mois ? "\"#d4a574\"" : "\"rgba(200,200,200,0.5)\""));
+
+        _chartCaMensuel = "{\"type\":\"bar\",\"data\":{\"labels\":["
+            + labels + "],\"datasets\":[{\"label\":\"CA\",\"data\":["
+            + data + "],\"backgroundColor\":[" + bgColors + "],"
+            + "\"borderColor\":[" + borderColors + "],\"borderWidth\":1,\"borderRadius\":6}]},"
+            + "\"options\":{\"responsive\":true,\"maintainAspectRatio\":false,"
+            + "\"plugins\":{\"legend\":{\"display\":false}},"
+            + "\"scales\":{\"y\":{\"beginAtZero\":true}}}}";
+
+        var pVal = _totalPrestations.ToString(ci);
+        var prVal = _totalProduits.ToString(ci);
+        _chartRepartition = "{\"type\":\"doughnut\",\"data\":{\"labels\":"
+            + "[\"Prestations\",\"Produits\"],\"datasets\":[{\"data\":["
+            + pVal + "," + prVal + "],\"backgroundColor\":[\"#d4a574\",\"#6c9bd2\"],"
+            + "\"borderWidth\":2,\"borderColor\":[\"#fff\",\"#fff\"]}]},"
+            + "\"options\":{\"responsive\":true,"
+            + "\"maintainAspectRatio\":false,\"plugins\":{\"legend\":{\"display\":true,\"position\":\"bottom\"}},"
+            + "\"cutout\":\"60%\"}}";
+    }
+
+    private void ShowAddAjustement()
+    {
+        _editAjust = new AjustementFinancier
+        {
+            Type = "depense",
+            Date = DateTime.Now.ToString("dd/MM/yyyy"),
+            Montant = 0
+        };
+        _showAjustModal = true;
+    }
+
+    private async Task SaveAjustement()
+    {
+        if (string.IsNullOrWhiteSpace(_editAjust.Description))
+        { _alert = "Description requise."; _alertType = "warning"; return; }
+        if (_editAjust.Montant == 0)
+        { _alert = "Montant requis."; _alertType = "warning"; return; }
+
+        // Appliquer le signe selon le type
+        if (_editAjust.Type is "depense" or "perte" or "charge" && _editAjust.Montant > 0)
+            _editAjust.Montant = -_editAjust.Montant;
+
+        _savingAjust = true; StateHasChanged();
+        try
+        {
+            await AjustSvc.AddAsync(_editAjust);
+            _showAjustModal = false;
+            _alert = "Ajustement enregistré."; _alertType = "success";
+            await LoadAsync();
+        }
+        catch (Exception ex) { _alert = ex.Message; _alertType = "danger"; }
+        finally { _savingAjust = false; StateHasChanged(); }
+    }
+
+    private async Task DeleteAjustement(AjustementFinancier a)
+    {
+        try
+        {
+            await AjustSvc.DeleteAsync(a.RowIndex);
+            _alert = "Ajustement supprimé."; _alertType = "success";
+            await LoadAsync();
+        }
+        catch (Exception ex) { _alert = ex.Message; _alertType = "danger"; }
+    }
+}

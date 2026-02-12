@@ -1,0 +1,47 @@
+@inject IJSRuntime JS
+@implements IAsyncDisposable
+
+<canvas id="@CanvasId" style="width:100%;max-height:@(Height)px;"></canvas>
+
+@code {
+    [Parameter] public string CanvasId { get; set; } = "chart-" + Guid.NewGuid().ToString("N")[..8];
+    [Parameter] public string ConfigJson { get; set; } = "";
+    [Parameter] public int Height { get; set; } = 300;
+
+    private bool _rendered;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender) _rendered = true;
+
+        if (_rendered && !string.IsNullOrEmpty(ConfigJson))
+        {
+            try
+            {
+                await JS.InvokeVoidAsync("chartInterop.createChart", CanvasId, ConfigJson);
+            }
+            catch { /* Chart.js pas encore chargé */ }
+        }
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_rendered && !string.IsNullOrEmpty(ConfigJson))
+        {
+            try
+            {
+                await JS.InvokeVoidAsync("chartInterop.updateChart", CanvasId, ConfigJson);
+            }
+            catch { }
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("chartInterop.destroyChart", CanvasId);
+        }
+        catch { }
+    }
+}

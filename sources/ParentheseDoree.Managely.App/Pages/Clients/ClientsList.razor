@@ -1,0 +1,240 @@
+@page "/clients"
+@inject ClientService ClientSvc
+@inject GoogleAuthService AuthService
+@inject NavigationManager Nav
+
+<PageTitle>Clients - Managely</PageTitle>
+
+<div class="page-header">
+    <div>
+        <h1><i class="bi bi-people me-2"></i>Clients</h1>
+        <p>Gestion de la clientèle</p>
+    </div>
+    @if (AuthService.CanWrite)
+    {
+        <button class="btn btn-gold" @onclick='() => Nav.NavigateTo("clients/nouveau")'>
+            <i class="bi bi-plus-lg me-1"></i> Nouveau client
+        </button>
+    }
+</div>
+
+<AlertMessage Message="@_alert" Type="@_alertType" OnDismiss="() => _alert = string.Empty" />
+
+<div class="card mb-4 border-0 shadow-sm">
+    <div class="card-body">
+        <div class="row g-3 align-items-center">
+            <div class="col-md-6">
+                <SearchBar Value="@_search" ValueChanged="OnSearch" Placeholder="Rechercher un client..." />
+            </div>
+            <div class="col-md-3">
+                <button class="btn btn-outline-secondary w-100" @onclick="LoadAsync" disabled="@_loading">
+                    <i class="bi bi-arrow-clockwise me-1 @(_loading ? "spin" : "")"></i> Actualiser
+                </button>
+            </div>
+            <div class="col-md-3 text-end">
+                <span class="text-muted">@_filtered.Count client(s)</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+@if (_loading)
+{
+    <LoadingSpinner Message="Chargement des clients..." />
+}
+else if (_filtered.Count == 0)
+{
+    <div class="alert alert-info">
+        <i class="bi bi-info-circle me-2"></i>
+        @(string.IsNullOrEmpty(_search) ? "Aucun client enregistré." : "Aucun client trouvé.")
+    </div>
+}
+else
+{
+    @* Vue mobile : cards *@
+    <div class="d-md-none">
+        @foreach (var c in _filtered)
+        {
+            <div class="card border-0 shadow-sm mb-2 cursor-pointer" @onclick='() => Nav.NavigateTo($"clients/{c.Guid}")'>
+                <div class="card-body p-3">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div>
+                            <strong class="fs-6">@c.NomComplet</strong>
+                            @if (!string.IsNullOrEmpty(c.NumeroTelephone))
+                            {
+                                <div class="small text-muted"><i class="bi bi-telephone me-1"></i>@c.NumeroTelephone</div>
+                            }
+                            @if (!string.IsNullOrEmpty(c.Email))
+                            {
+                                <div class="small text-muted"><i class="bi bi-envelope me-1"></i>@c.Email</div>
+                            }
+                        </div>
+                        <div class="d-flex gap-1">
+                            @if (AuthService.CanWrite)
+                            {
+                                <button class="btn btn-sm btn-outline-secondary" @onclick:stopPropagation="true"
+                                        @onclick='() => Nav.NavigateTo($"clients/{c.Guid}/modifier")'>
+                                    <i class="bi bi-pencil"></i>
+                                </button>
+                                <button class="btn btn-sm btn-outline-danger" @onclick:stopPropagation="true"
+                                        @onclick="() => ConfirmDelete(c)">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            }
+                        </div>
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+
+    @* Vue desktop : table *@
+    <div class="card border-0 shadow-sm d-none d-md-block">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th style="cursor:pointer" @onclick='() => SortBy("Nom")'>
+                            Nom @SortIcon("Nom")
+                        </th>
+                        <th>Téléphone</th>
+                        <th>Email</th>
+                        <th>Anniversaire</th>
+                        <th class="text-end">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var c in _filtered)
+                    {
+                        <tr>
+                            <td><strong>@c.NomComplet</strong></td>
+                            <td>
+                                @if (!string.IsNullOrEmpty(c.NumeroTelephone))
+                                {<i class="bi bi-telephone me-1 text-muted"></i>@c.NumeroTelephone}
+                            </td>
+                            <td>
+                                @if (!string.IsNullOrEmpty(c.Email))
+                                {<i class="bi bi-envelope me-1 text-muted"></i>@c.Email}
+                            </td>
+                            <td>@c.MoisAnniversaire</td>
+                            <td class="text-end">
+                                <button class="btn btn-sm btn-outline-primary me-1"
+                                        @onclick='() => Nav.NavigateTo($"clients/{c.Guid}")' title="Voir">
+                                    <i class="bi bi-eye"></i>
+                                </button>
+                                @if (AuthService.CanWrite)
+                                {
+                                    <button class="btn btn-sm btn-outline-secondary me-1"
+                                            @onclick='() => Nav.NavigateTo($"clients/{c.Guid}/modifier")' title="Modifier">
+                                        <i class="bi bi-pencil"></i>
+                                    </button>
+                                    <button class="btn btn-sm btn-outline-danger"
+                                            @onclick="() => ConfirmDelete(c)" title="Supprimer">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+}
+
+<ConfirmModal IsVisible="_showDelete" Title="Confirmer la suppression"
+              TitleCss="text-danger" Icon="bi-exclamation-triangle"
+              ConfirmText="Supprimer" IsProcessing="_deleting"
+              OnConfirm="DeleteAsync" OnCancel="() => _showDelete = false">
+    <p>Supprimer le client <strong>@_toDelete?.NomComplet</strong> ?</p>
+    <p class="text-muted mb-0">Cette action est irréversible.</p>
+</ConfirmModal>
+
+@code {
+    private List<Client> _all = [];
+    private List<Client> _filtered = [];
+    private bool _loading = true;
+    private string _search = "";
+    private string _sort = "Nom";
+    private bool _sortAsc = true;
+    private string _alert = "";
+    private string _alertType = "info";
+    private bool _showDelete;
+    private bool _deleting;
+    private Client? _toDelete;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await AuthService.InitializeAsync();
+            if (!AuthService.IsSignedIn || !AuthService.CanRead)
+            { Nav.NavigateTo("login"); return; }
+            await LoadAsync();
+        }
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true; StateHasChanged();
+        try { _all = await ClientSvc.GetAllAsync(true); Filter(); }
+        catch (Exception ex) { ShowAlert($"Erreur: {ex.Message}", "danger"); }
+        finally { _loading = false; StateHasChanged(); }
+    }
+
+    private void OnSearch(string val) { _search = val; Filter(); StateHasChanged(); }
+
+    private void Filter()
+    {
+        var q = _all.AsEnumerable();
+        if (!string.IsNullOrWhiteSpace(_search))
+        {
+            var t = _search.ToLower();
+            q = q.Where(c => c.Nom.Contains(t, StringComparison.OrdinalIgnoreCase)
+                || c.Prenom.Contains(t, StringComparison.OrdinalIgnoreCase)
+                || c.NumeroTelephone.Contains(t, StringComparison.OrdinalIgnoreCase)
+                || c.Email.Contains(t, StringComparison.OrdinalIgnoreCase));
+        }
+        _filtered = _sort switch
+        {
+            "Nom" => (_sortAsc ? q.OrderBy(c => c.NomComplet) : q.OrderByDescending(c => c.NomComplet)).ToList(),
+            _ => q.ToList()
+        };
+    }
+
+    private void SortBy(string col)
+    {
+        if (_sort == col) _sortAsc = !_sortAsc;
+        else { _sort = col; _sortAsc = true; }
+        Filter(); StateHasChanged();
+    }
+
+    private RenderFragment SortIcon(string col) => builder =>
+    {
+        if (_sort == col)
+        {
+            builder.OpenElement(0, "i");
+            builder.AddAttribute(1, "class", $"bi {(_sortAsc ? "bi-sort-alpha-down" : "bi-sort-alpha-up")} ms-1");
+            builder.CloseElement();
+        }
+    };
+
+    private void ConfirmDelete(Client c) { _toDelete = c; _showDelete = true; }
+
+    private async Task DeleteAsync()
+    {
+        if (_toDelete == null) return;
+        _deleting = true; StateHasChanged();
+        try
+        {
+            await ClientSvc.DeleteAsync(_toDelete.RowIndex);
+            ShowAlert("Client supprimé.", "success");
+            _showDelete = false; _toDelete = null;
+            await LoadAsync();
+        }
+        catch (Exception ex) { ShowAlert($"Erreur: {ex.Message}", "danger"); }
+        finally { _deleting = false; StateHasChanged(); }
+    }
+
+    private void ShowAlert(string msg, string type) { _alert = msg; _alertType = type; }
+}

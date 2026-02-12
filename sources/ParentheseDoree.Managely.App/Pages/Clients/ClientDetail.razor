@@ -1,0 +1,281 @@
+@page "/clients/{Guid}"
+@inject ClientService ClientSvc
+@inject PassageService PassageSvc
+@inject CarteCadeauService CarteSvc
+@inject FideliteService FideliteSvc
+@inject GoogleAuthService AuthService
+@inject NavigationManager Nav
+@inject IJSRuntime JSRuntime
+
+<PageTitle>@(_client?.NomComplet ?? "Client") - Managely</PageTitle>
+
+@if (_loading)
+{
+    <LoadingSpinner Message="Chargement du profil..." />
+}
+else if (_client == null)
+{
+    <div class="alert alert-warning">Client introuvable.</div>
+}
+else
+{
+    <div class="page-header">
+        <div>
+            <h1><i class="bi bi-person me-2"></i>@_client.NomComplet</h1>
+            <p>Fiche client détaillée</p>
+        </div>
+        <div class="d-flex gap-2 flex-wrap">
+            @if (AuthService.CanWrite)
+            {
+                <button class="btn btn-gold" @onclick='() => Nav.NavigateTo($"clients/{Guid}/modifier")'>
+                    <i class="bi bi-pencil me-1"></i> Modifier
+                </button>
+            }
+            <button class="btn btn-outline-secondary" @onclick="GoBack">
+                <i class="bi bi-arrow-left me-1"></i> Retour
+            </button>
+        </div>
+    </div>
+
+    <div class="row g-4">
+        @* Informations *@
+        <div class="col-lg-4">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body">
+                    <h5 class="card-title mb-3"><i class="bi bi-person-vcard me-2 text-gold"></i>Informations</h5>
+                    <dl class="mb-0">
+                        <dt class="small text-muted">Téléphone</dt>
+                        <dd>@(string.IsNullOrEmpty(_client.NumeroTelephone) ? "—" : _client.NumeroTelephone)</dd>
+                        <dt class="small text-muted">Email</dt>
+                        <dd>@(string.IsNullOrEmpty(_client.Email) ? "—" : _client.Email)</dd>
+                        <dt class="small text-muted">Adresse</dt>
+                        <dd>@(string.IsNullOrEmpty(_client.Adresse) ? "—" : _client.Adresse)</dd>
+                        <dt class="small text-muted">Anniversaire</dt>
+                        <dd>@(string.IsNullOrEmpty(_client.MoisAnniversaire) ? "—" : _client.MoisAnniversaire)</dd>
+                        <dt class="small text-muted">Client depuis</dt>
+                        <dd>@_client.DateCreation</dd>
+                    </dl>
+                </div>
+            </div>
+        </div>
+
+        @* Statistiques *@
+        <div class="col-lg-8">
+            <div class="row g-3 mb-4">
+                <div class="col-6 col-sm-4">
+                    <StatCard Value="@_nbPassages.ToString()" Label="Passages" Icon="bi-calendar-check" Color="primary" />
+                </div>
+                <div class="col-6 col-sm-4">
+                    <StatCard Value="@($"{_totalDepense:N0} €")" Label="Total dépensé" Icon="bi-currency-euro" Color="success" />
+                </div>
+                <div class="col-6 col-sm-4">
+                    <StatCard Value="@($"{_passagesAvant} restant(s)")" Label="Prochain palier fidélité"
+                              Icon="bi-heart" Color="warning" />
+                </div>
+            </div>
+
+            @* Cartes cadeaux *@
+            @if (_cartes.Count > 0)
+            {
+                <div class="card border-0 shadow-sm mb-4">
+                    <div class="card-header pt-3">
+                        <h6 class="mb-0"><i class="bi bi-gift me-2 text-gold"></i>Cartes cadeaux (@_cartes.Count)</h6>
+                    </div>
+                    <div class="card-body p-0">
+                        <div class="table-responsive">
+                            <table class="table table-sm mb-0">
+                                <thead><tr><th>Type</th><th>Montant</th><th>Solde</th><th>Statut</th><th>Expiration</th></tr></thead>
+                                <tbody>
+                                    @foreach (var c in _cartes)
+                                    {
+                                        <tr>
+                                            <td><span class="badge @(c.Type == "fidelite" ? "bg-warning text-dark" : "bg-info")">@c.Type</span></td>
+                                            <td>@c.MontantInitial.ToString("N2") €</td>
+                                            <td><strong>@c.SoldeRestant.ToString("N2") €</strong></td>
+                                            <td>
+                                                <span class="badge @(c.StatutCalcule switch { "active" => "bg-success", "utilisee" => "bg-secondary", _ => "bg-danger" })">
+                                                    @c.StatutCalcule
+                                                </span>
+                                            </td>
+                                            <td>@(string.IsNullOrEmpty(c.DateExpiration) ? "—" : c.DateExpiration)</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+    </div>
+
+    @* Historique des passages *@
+    <div class="card border-0 shadow-sm mt-4">
+        <div class="card-header pt-3">
+            <h5 class="mb-0"><i class="bi bi-clock-history me-2 text-gold"></i>Historique des passages (@_passages.Count)</h5>
+        </div>
+        @if (_passages.Count == 0)
+        {
+            <div class="card-body text-muted">Aucun passage enregistré.</div>
+        }
+        else
+        {
+            @* Vue mobile : cards *@
+            <div class="card-body d-md-none">
+                @foreach (var p in _passages)
+                {
+                    <div class="border rounded p-3 mb-2 cursor-pointer" @onclick='() => Nav.NavigateTo($"passages/{p.Guid}")'>
+                        <div class="d-flex justify-content-between mb-1">
+                            <strong>@p.Date</strong>
+                            <span class="text-gold fw-bold">@p.Total.ToString("N2") €</span>
+                        </div>
+                        <div class="small text-muted">@p.ResumePrestations</div>
+                        <div class="small">
+                            <span class="badge bg-light text-dark">@(string.IsNullOrEmpty(p.ModePaiement) ? "—" : p.ModePaiement)</span>
+                        </div>
+                    </div>
+                }
+            </div>
+            @* Vue desktop : table *@
+            <div class="table-responsive d-none d-md-block">
+                <table class="table table-hover mb-0">
+                    <thead><tr><th>Date</th><th>Prestations</th><th>Total</th><th>Paiement</th><th>Notes</th></tr></thead>
+                    <tbody>
+                        @foreach (var p in _passages)
+                        {
+                            <tr class="cursor-pointer" @onclick='() => Nav.NavigateTo($"passages/{p.Guid}")'>
+                                <td>@p.Date</td>
+                                <td>@p.ResumePrestations</td>
+                                <td><strong>@p.Total.ToString("N2") €</strong></td>
+                                <td>@(string.IsNullOrEmpty(p.ModePaiement) ? "—" : p.ModePaiement)</td>
+                                <td class="text-truncate" style="max-width:200px;">@p.NoteInterne</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+
+    @* Historique des produits achetés *@
+    @if (_produitsAchetes.Count > 0)
+    {
+        <div class="card border-0 shadow-sm mt-4">
+            <div class="card-header pt-3">
+                <h5 class="mb-0"><i class="bi bi-bag-check me-2 text-gold"></i>Historique des produits achetés (@_produitsAchetes.Count)</h5>
+            </div>
+            @* Vue mobile : cards *@
+            <div class="card-body d-md-none">
+                @foreach (var pa in _produitsAchetes)
+                {
+                    <div class="border rounded p-3 mb-2">
+                        <div class="d-flex justify-content-between mb-1">
+                            <strong>@pa.Nom</strong>
+                            <span class="text-gold fw-bold">@pa.Total.ToString("N2") €</span>
+                        </div>
+                        <div class="small text-muted">
+                            @pa.Date — @pa.Quantite x @pa.PrixUnitaire.ToString("N2") €
+                        </div>
+                        <a href="passages/@pa.PassageGuid" class="small text-decoration-none">
+                            <i class="bi bi-box-arrow-up-right me-1"></i>Voir le passage
+                        </a>
+                    </div>
+                }
+            </div>
+            @* Vue desktop : table *@
+            <div class="table-responsive d-none d-md-block">
+                <table class="table table-hover mb-0">
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Produit</th>
+                            <th class="text-center">Quantité</th>
+                            <th class="text-end">Prix unit.</th>
+                            <th class="text-end">Total</th>
+                            <th>Passage</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var pa in _produitsAchetes)
+                        {
+                            <tr>
+                                <td>@pa.Date</td>
+                                <td><strong>@pa.Nom</strong></td>
+                                <td class="text-center">@pa.Quantite</td>
+                                <td class="text-end">@pa.PrixUnitaire.ToString("N2") €</td>
+                                <td class="text-end fw-bold">@pa.Total.ToString("N2") €</td>
+                                <td>
+                                    <a href="passages/@pa.PassageGuid" class="btn btn-sm btn-outline-primary">
+                                        <i class="bi bi-eye"></i>
+                                    </a>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    }
+}
+
+@code {
+    [Parameter] public string Guid { get; set; } = "";
+
+    private Client? _client;
+    private List<Passage> _passages = [];
+    private List<CarteCadeau> _cartes = [];
+    private List<ProduitAcheteDetail> _produitsAchetes = [];
+    private bool _loading = true;
+    private int _nbPassages;
+    private decimal _totalDepense;
+    private int _passagesAvant;
+
+    private async Task GoBack() => await JSRuntime.InvokeVoidAsync("navigateBack");
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await AuthService.InitializeAsync();
+            if (!AuthService.IsSignedIn || !AuthService.CanRead)
+            { Nav.NavigateTo("login"); return; }
+
+            _client = await ClientSvc.GetByGuidAsync(Guid);
+            if (_client != null)
+            {
+                _passages = await PassageSvc.GetByClientAsync(Guid);
+                _cartes = await CarteSvc.GetByClientAsync(Guid);
+                var (nb, avant, _) = await FideliteSvc.GetStatutAsync(Guid);
+                _nbPassages = nb;
+                _passagesAvant = avant;
+                _totalDepense = _passages.Sum(p => p.Total);
+
+                // Construire l'historique des produits achetés
+                _produitsAchetes = _passages
+                    .SelectMany(p => p.ProduitsVendus.Select(pv => new ProduitAcheteDetail
+                    {
+                        Date = p.Date,
+                        Nom = pv.Nom,
+                        Quantite = pv.Quantite,
+                        PrixUnitaire = pv.PrixUnitaire,
+                        Total = pv.Total,
+                        PassageGuid = p.Guid
+                    }))
+                    .OrderByDescending(pa => pa.Date)
+                    .ToList();
+            }
+            _loading = false;
+            StateHasChanged();
+        }
+    }
+
+    private class ProduitAcheteDetail
+    {
+        public string Date { get; set; } = "";
+        public string Nom { get; set; } = "";
+        public int Quantite { get; set; }
+        public decimal PrixUnitaire { get; set; }
+        public decimal Total { get; set; }
+        public string PassageGuid { get; set; } = "";
+    }
+}

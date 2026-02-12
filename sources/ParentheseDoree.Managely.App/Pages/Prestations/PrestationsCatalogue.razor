@@ -1,0 +1,199 @@
+@page "/prestations"
+@inject PrestationService PrestaSvc
+@inject GoogleAuthService AuthService
+@inject NavigationManager Nav
+
+<PageTitle>Prestations - Managely</PageTitle>
+
+<div class="page-header">
+    <div>
+        <h1><i class="bi bi-scissors me-2"></i>Catalogue de prestations</h1>
+        <p>Types de soins proposés</p>
+    </div>
+    @if (AuthService.CanWrite)
+    {
+        <button class="btn btn-gold" @onclick="ShowAdd">
+            <i class="bi bi-plus-lg me-1"></i> Nouvelle prestation
+        </button>
+    }
+</div>
+
+<AlertMessage Message="@_alert" Type="@_alertType" OnDismiss="() => _alert = string.Empty" />
+
+@if (_loading)
+{
+    <LoadingSpinner />
+}
+else
+{
+    <div class="row g-3">
+        @foreach (var cat in _grouped)
+        {
+            <div class="col-12">
+                <h5 class="text-muted mb-3">
+                    <i class="bi bi-tag me-1"></i>@(string.IsNullOrEmpty(cat.Key) ? "Sans catégorie" : cat.Key)
+                </h5>
+            </div>
+            @foreach (var p in cat)
+            {
+                <div class="col-md-6 col-lg-4">
+                    <div class="card border-0 shadow-sm h-100">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between align-items-start">
+                                <div>
+                                    <h6 class="fw-bold mb-1">@p.Nom</h6>
+                                    <span class="badge bg-gold-subtle text-gold">@p.PrixDefaut.ToString("N0") €</span>
+                                    @if (p.DureeMinutes > 0)
+                                    {
+                                        <span class="badge bg-light text-dark ms-1">@p.DureeMinutes min</span>
+                                    }
+                                </div>
+                                <div>
+                                    @if (!p.Actif)
+                                    {
+                                        <span class="badge bg-secondary">Inactif</span>
+                                    }
+                                </div>
+                            </div>
+                        </div>
+                        @if (AuthService.CanWrite)
+                        {
+                            <div class="card-footer bg-transparent border-0 d-flex gap-1">
+                                <button class="btn btn-sm btn-outline-secondary" @onclick="() => ShowEdit(p)">
+                                    <i class="bi bi-pencil"></i>
+                                </button>
+                                <button class="btn btn-sm btn-outline-danger" @onclick="() => ConfirmDelete(p)">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
+        }
+    </div>
+}
+
+@* Modal ajout/modification *@
+@if (_showModal)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background-color:rgba(0,0,0,0.5);">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">@(_editing.RowIndex == 0 ? "Nouvelle prestation" : "Modifier la prestation")</h5>
+                    <button type="button" class="btn-close" @onclick="CloseModal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row g-3">
+                        <div class="col-12">
+                            <label class="form-label fw-semibold">Nom de la prestation <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" @bind="_editing.Nom" placeholder="Ex: Soin visage hydratant" />
+                            <small class="text-muted">Nom tel qu'il apparaîtra dans le catalogue et les passages.</small>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Catégorie</label>
+                            <input type="text" class="form-control" @bind="_editing.Categorie" placeholder="Ex: Soins visage, Épilation..." />
+                            <small class="text-muted">Permet de regrouper les prestations par type.</small>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Prix par défaut (€) <span class="text-danger">*</span></label>
+                            <input type="number" class="form-control" @bind="_editing.PrixDefaut" step="0.01" min="0" placeholder="0.00" />
+                            <small class="text-muted">Prix proposé automatiquement lors d'un passage.</small>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Durée estimée (minutes)</label>
+                            <input type="number" class="form-control" @bind="_editing.DureeMinutes" min="0" placeholder="0" />
+                            <small class="text-muted">Durée indicative du soin.</small>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-check mt-4">
+                                <input class="form-check-input" type="checkbox" @bind="_editing.Actif" />
+                                <label class="form-check-label fw-semibold">Prestation active</label>
+                            </div>
+                            <small class="text-muted">Désactiver masque la prestation du catalogue sans la supprimer.</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" @onclick="CloseModal">Annuler</button>
+                    <button class="btn btn-gold" @onclick="SaveAsync" disabled="@_saving">
+                        @if (_saving) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                        Enregistrer
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+<ConfirmModal IsVisible="_showDelete" Title="Supprimer la prestation"
+              TitleCss="text-danger" Icon="bi-exclamation-triangle"
+              ConfirmText="Supprimer" IsProcessing="_deleting"
+              OnConfirm="DeleteAsync" OnCancel="() => _showDelete = false">
+    <p>Supprimer <strong>@_toDelete?.Nom</strong> ?</p>
+</ConfirmModal>
+
+@code {
+    private List<Prestation> _all = [];
+    private IEnumerable<IGrouping<string, Prestation>> _grouped = [];
+    private bool _loading = true;
+    private bool _showModal, _saving, _showDelete, _deleting;
+    private Prestation _editing = new();
+    private Prestation? _toDelete;
+    private string _alert = "", _alertType = "info";
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await AuthService.InitializeAsync();
+            if (!AuthService.IsSignedIn || !AuthService.CanRead) { Nav.NavigateTo("login"); return; }
+            await LoadAsync();
+        }
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true; StateHasChanged();
+        try { _all = await PrestaSvc.GetAllAsync(true); GroupData(); }
+        catch (Exception ex) { _alert = ex.Message; _alertType = "danger"; }
+        finally { _loading = false; StateHasChanged(); }
+    }
+
+    private void GroupData() => _grouped = _all.GroupBy(p => p.Categorie).OrderBy(g => g.Key);
+
+    private void ShowAdd() { _editing = new Prestation { Actif = true }; _showModal = true; }
+    private void ShowEdit(Prestation p) { _editing = new Prestation { RowIndex = p.RowIndex, Guid = p.Guid, Nom = p.Nom, Categorie = p.Categorie, PrixDefaut = p.PrixDefaut, DureeMinutes = p.DureeMinutes, Actif = p.Actif }; _showModal = true; }
+    private void CloseModal() { _showModal = false; _editing = new(); }
+    private void ConfirmDelete(Prestation p) { _toDelete = p; _showDelete = true; }
+
+    private async Task SaveAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_editing.Nom)) { _alert = "Le nom est requis."; _alertType = "warning"; return; }
+        _saving = true; StateHasChanged();
+        try
+        {
+            if (_editing.RowIndex == 0) await PrestaSvc.AddAsync(_editing);
+            else await PrestaSvc.UpdateAsync(_editing);
+            CloseModal(); await LoadAsync();
+            _alert = "Prestation enregistrée."; _alertType = "success";
+        }
+        catch (Exception ex) { _alert = ex.Message; _alertType = "danger"; }
+        finally { _saving = false; StateHasChanged(); }
+    }
+
+    private async Task DeleteAsync()
+    {
+        if (_toDelete == null) return;
+        _deleting = true; StateHasChanged();
+        try
+        {
+            await PrestaSvc.DeleteAsync(_toDelete.RowIndex);
+            _showDelete = false; _toDelete = null; await LoadAsync();
+            _alert = "Prestation supprimée."; _alertType = "success";
+        }
+        catch (Exception ex) { _alert = ex.Message; _alertType = "danger"; }
+        finally { _deleting = false; StateHasChanged(); }
+    }
+}

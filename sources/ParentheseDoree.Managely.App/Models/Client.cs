@@ -1,3 +1,6 @@
+using System.Security.Cryptography;
+using System.Text;
+
 namespace ParentheseDoree.Managely.App.Models;
 
 /// <summary>
@@ -6,59 +9,51 @@ namespace ParentheseDoree.Managely.App.Models;
 /// </summary>
 public class Client
 {
-    /// <summary>
-    /// Numéro de ligne dans le Spreadsheet (1-based, hors en-tête).
-    /// Utilisé pour les opérations de mise à jour et suppression.
-    /// </summary>
     public int RowIndex { get; set; }
-
-    /// <summary>
-    /// Identifiant unique du client.
-    /// </summary>
-    public string Id { get; set; } = string.Empty;
-
-    /// <summary>
-    /// Nom de famille du client.
-    /// </summary>
+    public string Guid { get; set; } = string.Empty;
     public string Nom { get; set; } = string.Empty;
-
-    /// <summary>
-    /// Prénom du client.
-    /// </summary>
     public string Prenom { get; set; } = string.Empty;
-
-    /// <summary>
-    /// Numéro de téléphone du client.
-    /// </summary>
-    public string Telephone { get; set; } = string.Empty;
-
-    /// <summary>
-    /// Adresse email du client.
-    /// </summary>
+    public string MoisAnniversaire { get; set; } = string.Empty;
+    public string NumeroTelephone { get; set; } = string.Empty;
     public string Email { get; set; } = string.Empty;
-
-    /// <summary>
-    /// Date de naissance du client.
-    /// </summary>
-    public string DateNaissance { get; set; } = string.Empty;
-
-    /// <summary>
-    /// Adresse postale du client.
-    /// </summary>
     public string Adresse { get; set; } = string.Empty;
-
-    /// <summary>
-    /// Notes ou commentaires sur le client.
-    /// </summary>
-    public string Notes { get; set; } = string.Empty;
-
-    /// <summary>
-    /// Date de création de la fiche client.
-    /// </summary>
     public string DateCreation { get; set; } = string.Empty;
+    public string DateModification { get; set; } = string.Empty;
+    public string HachageIntegrite { get; set; } = string.Empty;
+
+    public string NomComplet => $"{Prenom} {Nom}".Trim();
 
     /// <summary>
-    /// Retourne le nom complet du client.
+    /// Génère un nouveau GUID pour le client.
     /// </summary>
-    public string NomComplet => $"{Prenom} {Nom}".Trim();
+    public void GenererGuid() => Guid = System.Guid.NewGuid().ToString();
+
+    /// <summary>
+    /// Calcule le hachage d'intégrité basé sur les données du client.
+    /// </summary>
+    public string CalculerHachage()
+    {
+        var data = $"{Nom}|{Prenom}|{MoisAnniversaire}|{NumeroTelephone}|{Email}|{Adresse}";
+        var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(data));
+        return Convert.ToHexString(bytes)[..16];
+    }
+
+    /// <summary>
+    /// Met à jour le hachage d'intégrité et la date de modification.
+    /// </summary>
+    public void MettreAJourIntegrite()
+    {
+        DateModification = DateTime.UtcNow.ToString("o");
+        HachageIntegrite = CalculerHachage();
+    }
+
+    /// <summary>
+    /// Vérifie si les données ont été modifiées depuis le dernier hachage.
+    /// Retourne true si les données sont intègres (pas de conflit).
+    /// </summary>
+    public bool VerifierIntegrite()
+    {
+        if (string.IsNullOrEmpty(HachageIntegrite)) return true;
+        return CalculerHachage() == HachageIntegrite;
+    }
 }

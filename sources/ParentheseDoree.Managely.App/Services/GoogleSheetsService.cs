@@ -1,11 +1,10 @@
 using Microsoft.JSInterop;
-using ParentheseDoree.Managely.App.Models;
 
 namespace ParentheseDoree.Managely.App.Services;
 
 /// <summary>
-/// Service simplifié pour les opérations CRUD sur Google Sheets.
-/// Pas de système de cache - appels directs à l'API.
+/// Service bas-niveau générique pour les opérations CRUD sur Google Sheets.
+/// Tous les services métier utilisent ce service pour accéder aux données.
 /// </summary>
 public sealed class GoogleSheetsService
 {
@@ -14,7 +13,7 @@ public sealed class GoogleSheetsService
     private readonly BrowserLoggerService _logger;
 
     public GoogleSheetsService(
-        IJSRuntime jsRuntime, 
+        IJSRuntime jsRuntime,
         GoogleAuthService authService,
         BrowserLoggerService logger)
     {
@@ -23,335 +22,140 @@ public sealed class GoogleSheetsService
         _logger = logger;
     }
 
-    // =========================================================================
-    // CLIENTS
-    // =========================================================================
-
     /// <summary>
-    /// Récupère tous les clients depuis le Spreadsheet.
+    /// Lit toutes les lignes d'une feuille (hors en-tête).
+    /// Retourne une liste de tableaux de chaînes.
     /// </summary>
-    public async Task<List<Client>> GetClientsAsync()
+    public async Task<List<string[]>> ReadSheetAsync(string sheetName, string range)
     {
         try
         {
-            await _logger.InfoAsync(LogCategory.API, "Chargement des clients...");
-            
-            var result = await _jsRuntime.InvokeAsync<ClientJs[]>("googleSheetsApi.getClients");
-            
-            var clients = result?.Select(c => new Client
-            {
-                RowIndex = c.RowIndex,
-                Id = c.Id ?? string.Empty,
-                Nom = c.Nom ?? string.Empty,
-                Prenom = c.Prenom ?? string.Empty,
-                Telephone = c.Telephone ?? string.Empty,
-                Email = c.Email ?? string.Empty,
-                DateNaissance = c.DateNaissance ?? string.Empty,
-                Adresse = c.Adresse ?? string.Empty,
-                Notes = c.Notes ?? string.Empty,
-                DateCreation = c.DateCreation ?? string.Empty
-            }).ToList() ?? [];
-
-            await _logger.SuccessAsync(LogCategory.API, $"{clients.Count} client(s) chargé(s)");
-            return clients;
+            var result = await _jsRuntime.InvokeAsync<SheetDataJs>("googleSheetsApi.readSheet", sheetName, range);
+            if (result?.Rows == null) return [];
+            return result.Rows.Select(r => r ?? []).ToList();
         }
         catch (Exception ex)
         {
-            await _logger.ErrorAsync(LogCategory.API, "Erreur chargement clients", new { error = ex.Message });
-            throw new InvalidOperationException("Impossible de récupérer les clients", ex);
+            await _logger.ErrorAsync(LogCategory.API, $"Erreur lecture {sheetName}", new { error = ex.Message });
+            throw;
         }
     }
 
     /// <summary>
-    /// Ajoute un nouveau client.
+    /// Lit plusieurs plages en un seul appel batch.
     /// </summary>
-    public async Task<string> AddClientAsync(Client client)
+    public async Task<Dictionary<string, List<string[]>>> BatchReadAsync(string[] ranges)
+    {
+        try
+        {
+            var result = await _jsRuntime.InvokeAsync<BatchReadResultJs>("googleSheetsApi.batchRead", (object)ranges);
+            var dict = new Dictionary<string, List<string[]>>();
+            if (result?.Results != null)
+            {
+                foreach (var kvp in result.Results)
+                    dict[kvp.Key] = kvp.Value?.Select(r => r ?? []).ToList() ?? [];
+            }
+            return dict;
+        }
+        catch (Exception ex)
+        {
+            await _logger.ErrorAsync(LogCategory.API, "Erreur batch read", new { error = ex.Message });
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Ajoute une ligne à une feuille. Retourne true si succès.
+    /// </summary>
+    public async Task<bool> AppendRowAsync(string sheetName, string range, string[] values)
     {
         if (!_authService.CanWrite)
-            throw new UnauthorizedAccessException("Vous n'avez pas les droits d'écriture");
+            throw new UnauthorizedAccessException("Droits d'écriture requis");
 
         try
         {
-            await _logger.InfoAsync(LogCategory.API, "Ajout d'un client...");
-            
-            var result = await _jsRuntime.InvokeAsync<OperationResultJs>("googleSheetsApi.addClient", new
-            {
-                nom = client.Nom,
-                prenom = client.Prenom,
-                telephone = client.Telephone,
-                email = client.Email,
-                dateNaissance = client.DateNaissance,
-                adresse = client.Adresse,
-                notes = client.Notes
-            });
-
-            if (!result.Success)
-                throw new InvalidOperationException(result.Error ?? "Échec de l'ajout du client");
-
-            await _logger.SuccessAsync(LogCategory.API, $"Client ajouté: {client.NomComplet}");
-            return result.Id ?? string.Empty;
+            var result = await _jsRuntime.InvokeAsync<OperationResultJs>(
+                "googleSheetsApi.appendRow", sheetName, range, values);
+            return result?.Success ?? false;
         }
-        catch (UnauthorizedAccessException) { throw; }
         catch (Exception ex)
         {
-            await _logger.ErrorAsync(LogCategory.API, "Erreur ajout client", new { error = ex.Message });
-            throw new InvalidOperationException("Impossible d'ajouter le client", ex);
+            await _logger.ErrorAsync(LogCategory.API, $"Erreur ajout {sheetName}", new { error = ex.Message });
+            throw;
         }
     }
 
     /// <summary>
-    /// Met à jour un client existant.
+    /// Met à jour une ligne existante.
     /// </summary>
-    public async Task UpdateClientAsync(Client client)
+    public async Task<bool> UpdateRowAsync(string sheetName, int rowIndex, string range, string[] values)
     {
         if (!_authService.CanWrite)
-            throw new UnauthorizedAccessException("Vous n'avez pas les droits d'écriture");
+            throw new UnauthorizedAccessException("Droits d'écriture requis");
 
         try
         {
-            await _logger.InfoAsync(LogCategory.API, $"Modification du client {client.NomComplet}...");
-            
-            var result = await _jsRuntime.InvokeAsync<OperationResultJs>("googleSheetsApi.updateClient", new
-            {
-                rowIndex = client.RowIndex,
-                id = client.Id,
-                nom = client.Nom,
-                prenom = client.Prenom,
-                telephone = client.Telephone,
-                email = client.Email,
-                dateNaissance = client.DateNaissance,
-                adresse = client.Adresse,
-                notes = client.Notes,
-                dateCreation = client.DateCreation
-            });
-
-            if (!result.Success)
-                throw new InvalidOperationException(result.Error ?? "Échec de la mise à jour du client");
-
-            await _logger.SuccessAsync(LogCategory.API, $"Client modifié: {client.NomComplet}");
+            var result = await _jsRuntime.InvokeAsync<OperationResultJs>(
+                "googleSheetsApi.updateRow", sheetName, rowIndex, range, values);
+            return result?.Success ?? false;
         }
-        catch (UnauthorizedAccessException) { throw; }
         catch (Exception ex)
         {
-            await _logger.ErrorAsync(LogCategory.API, "Erreur modification client", new { error = ex.Message });
-            throw new InvalidOperationException("Impossible de modifier le client", ex);
+            await _logger.ErrorAsync(LogCategory.API, $"Erreur MAJ {sheetName} ligne {rowIndex}", new { error = ex.Message });
+            throw;
         }
     }
 
     /// <summary>
-    /// Supprime un client.
+    /// Supprime une ligne.
     /// </summary>
-    public async Task DeleteClientAsync(int rowIndex)
+    public async Task<bool> DeleteRowAsync(string sheetName, int rowIndex)
     {
         if (!_authService.CanWrite)
-            throw new UnauthorizedAccessException("Vous n'avez pas les droits d'écriture");
+            throw new UnauthorizedAccessException("Droits d'écriture requis");
 
         try
         {
-            await _logger.InfoAsync(LogCategory.API, $"Suppression du client ligne {rowIndex}...");
-            
-            var result = await _jsRuntime.InvokeAsync<OperationResultJs>("googleSheetsApi.deleteClient", rowIndex);
-
-            if (!result.Success)
-                throw new InvalidOperationException(result.Error ?? "Échec de la suppression du client");
-
-            await _logger.SuccessAsync(LogCategory.API, "Client supprimé");
-        }
-        catch (UnauthorizedAccessException) { throw; }
-        catch (Exception ex)
-        {
-            await _logger.ErrorAsync(LogCategory.API, "Erreur suppression client", new { error = ex.Message });
-            throw new InvalidOperationException("Impossible de supprimer le client", ex);
-        }
-    }
-
-    // =========================================================================
-    // PRESTATIONS
-    // =========================================================================
-
-    /// <summary>
-    /// Récupère toutes les prestations depuis le Spreadsheet.
-    /// </summary>
-    public async Task<List<Prestation>> GetPrestationsAsync()
-    {
-        try
-        {
-            await _logger.InfoAsync(LogCategory.API, "Chargement des prestations...");
-            
-            var result = await _jsRuntime.InvokeAsync<PrestationJs[]>("googleSheetsApi.getPrestations");
-            
-            var prestations = result?.Select(p => new Prestation
-            {
-                RowIndex = p.RowIndex,
-                Id = p.Id ?? string.Empty,
-                ClientId = p.ClientId ?? string.Empty,
-                ClientNom = p.ClientNom ?? string.Empty,
-                Date = p.Date ?? string.Empty,
-                TypePrestation = p.TypePrestation ?? string.Empty,
-                Description = p.Description ?? string.Empty,
-                Prix = p.Prix,
-                DureeMinutes = p.DureeMinutes,
-                ModePaiement = p.ModePaiement ?? string.Empty,
-                EstPayee = p.EstPayee,
-                Notes = p.Notes ?? string.Empty
-            }).ToList() ?? [];
-
-            await _logger.SuccessAsync(LogCategory.API, $"{prestations.Count} prestation(s) chargée(s)");
-            return prestations;
+            var result = await _jsRuntime.InvokeAsync<OperationResultJs>(
+                "googleSheetsApi.deleteRow", sheetName, rowIndex);
+            return result?.Success ?? false;
         }
         catch (Exception ex)
         {
-            await _logger.ErrorAsync(LogCategory.API, "Erreur chargement prestations", new { error = ex.Message });
-            throw new InvalidOperationException("Impossible de récupérer les prestations", ex);
+            await _logger.ErrorAsync(LogCategory.API, $"Erreur suppression {sheetName} ligne {rowIndex}", new { error = ex.Message });
+            throw;
         }
     }
 
     /// <summary>
-    /// Ajoute une nouvelle prestation.
+    /// S'assure qu'une feuille existe avec les en-têtes spécifiés.
     /// </summary>
-    public async Task<string> AddPrestationAsync(Prestation prestation)
+    public async Task EnsureSheetAsync(string sheetName, string[] headers)
     {
-        if (!_authService.CanWrite)
-            throw new UnauthorizedAccessException("Vous n'avez pas les droits d'écriture");
-
         try
         {
-            await _logger.InfoAsync(LogCategory.API, "Ajout d'une prestation...");
-            
-            var result = await _jsRuntime.InvokeAsync<OperationResultJs>("googleSheetsApi.addPrestation", new
-            {
-                clientId = prestation.ClientId,
-                clientNom = prestation.ClientNom,
-                date = prestation.Date,
-                typePrestation = prestation.TypePrestation,
-                description = prestation.Description,
-                prix = prestation.Prix,
-                dureeMinutes = prestation.DureeMinutes,
-                modePaiement = prestation.ModePaiement,
-                estPayee = prestation.EstPayee,
-                notes = prestation.Notes
-            });
-
-            if (!result.Success)
-                throw new InvalidOperationException(result.Error ?? "Échec de l'ajout de la prestation");
-
-            await _logger.SuccessAsync(LogCategory.API, $"Prestation ajoutée: {prestation.TypePrestation}");
-            return result.Id ?? string.Empty;
+            await _jsRuntime.InvokeVoidAsync("googleSheetsApi.ensureSheet", sheetName, headers);
         }
-        catch (UnauthorizedAccessException) { throw; }
         catch (Exception ex)
         {
-            await _logger.ErrorAsync(LogCategory.API, "Erreur ajout prestation", new { error = ex.Message });
-            throw new InvalidOperationException("Impossible d'ajouter la prestation", ex);
+            await _logger.ErrorAsync(LogCategory.API, $"Erreur ensureSheet {sheetName}", new { error = ex.Message });
         }
     }
 
-    /// <summary>
-    /// Met à jour une prestation existante.
-    /// </summary>
-    public async Task UpdatePrestationAsync(Prestation prestation)
+    // Classes internes pour la désérialisation
+    private class SheetDataJs
     {
-        if (!_authService.CanWrite)
-            throw new UnauthorizedAccessException("Vous n'avez pas les droits d'écriture");
-
-        try
-        {
-            await _logger.InfoAsync(LogCategory.API, $"Modification de la prestation...");
-            
-            var result = await _jsRuntime.InvokeAsync<OperationResultJs>("googleSheetsApi.updatePrestation", new
-            {
-                rowIndex = prestation.RowIndex,
-                id = prestation.Id,
-                clientId = prestation.ClientId,
-                clientNom = prestation.ClientNom,
-                date = prestation.Date,
-                typePrestation = prestation.TypePrestation,
-                description = prestation.Description,
-                prix = prestation.Prix,
-                dureeMinutes = prestation.DureeMinutes,
-                modePaiement = prestation.ModePaiement,
-                estPayee = prestation.EstPayee,
-                notes = prestation.Notes
-            });
-
-            if (!result.Success)
-                throw new InvalidOperationException(result.Error ?? "Échec de la mise à jour de la prestation");
-
-            await _logger.SuccessAsync(LogCategory.API, $"Prestation modifiée: {prestation.TypePrestation}");
-        }
-        catch (UnauthorizedAccessException) { throw; }
-        catch (Exception ex)
-        {
-            await _logger.ErrorAsync(LogCategory.API, "Erreur modification prestation", new { error = ex.Message });
-            throw new InvalidOperationException("Impossible de modifier la prestation", ex);
-        }
+        public string[][]? Rows { get; set; }
     }
 
-    /// <summary>
-    /// Supprime une prestation.
-    /// </summary>
-    public async Task DeletePrestationAsync(int rowIndex)
+    private class BatchReadResultJs
     {
-        if (!_authService.CanWrite)
-            throw new UnauthorizedAccessException("Vous n'avez pas les droits d'écriture");
-
-        try
-        {
-            await _logger.InfoAsync(LogCategory.API, $"Suppression de la prestation ligne {rowIndex}...");
-            
-            var result = await _jsRuntime.InvokeAsync<OperationResultJs>("googleSheetsApi.deletePrestation", rowIndex);
-
-            if (!result.Success)
-                throw new InvalidOperationException(result.Error ?? "Échec de la suppression de la prestation");
-
-            await _logger.SuccessAsync(LogCategory.API, "Prestation supprimée");
-        }
-        catch (UnauthorizedAccessException) { throw; }
-        catch (Exception ex)
-        {
-            await _logger.ErrorAsync(LogCategory.API, "Erreur suppression prestation", new { error = ex.Message });
-            throw new InvalidOperationException("Impossible de supprimer la prestation", ex);
-        }
-    }
-
-    // =========================================================================
-    // CLASSES INTERNES POUR LA DÉSÉRIALISATION
-    // =========================================================================
-
-    private class ClientJs
-    {
-        public int RowIndex { get; set; }
-        public string? Id { get; set; }
-        public string? Nom { get; set; }
-        public string? Prenom { get; set; }
-        public string? Telephone { get; set; }
-        public string? Email { get; set; }
-        public string? DateNaissance { get; set; }
-        public string? Adresse { get; set; }
-        public string? Notes { get; set; }
-        public string? DateCreation { get; set; }
-    }
-
-    private class PrestationJs
-    {
-        public int RowIndex { get; set; }
-        public string? Id { get; set; }
-        public string? ClientId { get; set; }
-        public string? ClientNom { get; set; }
-        public string? Date { get; set; }
-        public string? TypePrestation { get; set; }
-        public string? Description { get; set; }
-        public decimal Prix { get; set; }
-        public int DureeMinutes { get; set; }
-        public string? ModePaiement { get; set; }
-        public bool EstPayee { get; set; }
-        public string? Notes { get; set; }
+        public Dictionary<string, string[][]>? Results { get; set; }
     }
 
     private class OperationResultJs
     {
         public bool Success { get; set; }
-        public string? Id { get; set; }
         public string? Error { get; set; }
     }
 }

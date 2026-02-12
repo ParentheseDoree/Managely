@@ -1,0 +1,437 @@
+@page "/produits"
+@inject ProduitService ProduitSvc
+@inject MouvementStockService MouvementSvc
+@inject AjustementService AjustSvc
+@inject GoogleAuthService AuthService
+@inject NavigationManager Nav
+
+<PageTitle>Inventaire - Managely</PageTitle>
+
+<div class="page-header">
+    <div>
+        <h1><i class="bi bi-box-seam me-2"></i>Inventaire Produits</h1>
+        <p>Gestion du stock</p>
+    </div>
+    @if (AuthService.CanWrite)
+    {
+        <button class="btn btn-gold" @onclick="ShowAdd">
+            <i class="bi bi-plus-lg me-1"></i> Nouveau produit
+        </button>
+    }
+</div>
+
+<AlertMessage Message="@_alert" Type="@_alertType" OnDismiss="() => _alert = string.Empty" />
+
+@if (_alertes.Count > 0)
+{
+    <div class="alert alert-warning">
+        <i class="bi bi-exclamation-triangle me-2"></i>
+        <strong>@_alertes.Count produit(s) en alerte de stock :</strong>
+        @string.Join(", ", _alertes.Select(a => $"{a.Nom} ({a.Stock})"))
+    </div>
+}
+
+<div class="card mb-4 border-0 shadow-sm">
+    <div class="card-body">
+        <div class="row g-3 align-items-center">
+            <div class="col-md-5">
+                <SearchBar Value="@_search" ValueChanged="OnSearch" Placeholder="Rechercher un produit..." />
+            </div>
+            <div class="col-md-3">
+                <select class="form-select" @bind="_filterCategorie" @bind:after="Filter">
+                    <option value="">Toutes catégories</option>
+                    @foreach (var cat in _categories)
+                    {
+                        <option value="@cat">@cat</option>
+                    }
+                </select>
+            </div>
+            <div class="col-md-2">
+                <button class="btn btn-outline-secondary w-100" @onclick="LoadAsync" disabled="@_loading">
+                    <i class="bi bi-arrow-clockwise me-1 @(_loading ? "spin" : "")"></i> Actualiser
+                </button>
+            </div>
+            <div class="col-md-2 text-end">
+                <span class="text-muted">@_filtered.Count produit(s)</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+@if (_loading) { <LoadingSpinner /> }
+else if (_filtered.Count == 0)
+{
+    <div class="alert alert-info"><i class="bi bi-info-circle me-2"></i>Aucun produit trouvé.</div>
+}
+else
+{
+    @* Vue mobile : cards *@
+    <div class="d-md-none">
+        @foreach (var p in _filtered)
+        {
+            <div class="card border-0 shadow-sm mb-2 @(p.EstEnRupture ? "border-danger border" : p.EstEnAlerte ? "border-warning border" : "")">
+                <div class="card-body p-3">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div>
+                            <strong>@p.Nom</strong>
+                            @if (!p.Actif) { <span class="badge bg-secondary ms-1">Inactif</span> }
+                            @if (!string.IsNullOrEmpty(p.Marque)) { <br /><small class="text-muted">@p.Marque</small> }
+                        </div>
+                        <div class="text-end">
+                            <span class="badge @(p.EstEnRupture ? "bg-danger" : p.EstEnAlerte ? "bg-warning text-dark" : "bg-success") fs-6">@p.Stock</span>
+                            <div class="small text-muted mt-1">@p.PrixVente.ToString("N2") €</div>
+                        </div>
+                    </div>
+                    @if (AuthService.CanWrite)
+                    {
+                        <div class="d-flex gap-2 mt-2">
+                            <button class="btn btn-sm btn-outline-success flex-fill" @onclick="() => ShowRestock(p)">
+                                <i class="bi bi-plus-circle me-1"></i>Réappro.
+                            </button>
+                            <button class="btn btn-sm btn-outline-danger" @onclick="() => ConfirmDelete(p)"><i class="bi bi-trash"></i></button>
+                        </div>
+                    }
+                </div>
+            </div>
+        }
+    </div>
+
+    @* Vue desktop : table *@
+    <div class="card border-0 shadow-sm d-none d-md-block">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th>Produit</th>
+                        <th>Marque</th>
+                        <th>Catégorie</th>
+                        <th class="text-end">Prix vente</th>
+                        <th class="text-center">Stock</th>
+                        <th class="text-end">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var p in _filtered)
+                    {
+                        <tr class="@(p.EstEnAlerte ? "table-warning" : "") @(p.EstEnRupture ? "table-danger" : "")">
+                            <td>
+                                <strong>@p.Nom</strong>
+                                @if (!p.Actif) { <span class="badge bg-secondary ms-1">Inactif</span> }
+                            </td>
+                            <td>@p.Marque</td>
+                            <td>@p.Categorie</td>
+                            <td class="text-end">@p.PrixVente.ToString("N2") €</td>
+                            <td class="text-center">
+                                <span class="badge @(p.EstEnRupture ? "bg-danger" : p.EstEnAlerte ? "bg-warning text-dark" : "bg-success")">
+                                    @p.Stock
+                                </span>
+                            </td>
+                            <td class="text-end">
+                                @if (AuthService.CanWrite)
+                                {
+                                    <button class="btn btn-sm btn-outline-success me-1" @onclick="() => ShowRestock(p)" title="Réapprovisionner">
+                                        <i class="bi bi-plus-circle"></i>
+                                    </button>
+                                    <button class="btn btn-sm btn-outline-danger" @onclick="() => ConfirmDelete(p)" title="Supprimer">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+}
+
+@* Modal création uniquement (un produit ne peut pas être modifié après création) *@
+@if (_showModal)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background-color:rgba(0,0,0,0.5);">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-box-seam me-2"></i>Nouveau produit</h5>
+                    <button type="button" class="btn-close" @onclick="CloseModal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Nom du produit <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" @bind="_editing.Nom" placeholder="Ex: Crème hydratante" />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Marque</label>
+                            <input type="text" class="form-control" @bind="_editing.Marque" placeholder="Ex: Carita" />
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-semibold">Prix de vente (€) <span class="text-danger">*</span></label>
+                            <input type="number" class="form-control" @bind="_editing.PrixVente" step="0.01" min="0" placeholder="0.00" />
+                            <small class="text-muted">Prix affiché au client.</small>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-semibold">Prix d'achat fournisseur (€) <span class="text-danger">*</span></label>
+                            <input type="number" class="form-control" @bind="_editing.PrixAchat" step="0.01" min="0" placeholder="0.00" />
+                            <small class="text-muted">Coût d'approvisionnement unitaire.</small>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-semibold">Catégorie</label>
+                            <input type="text" class="form-control" @bind="_editing.Categorie" placeholder="Ex: Soins visage" />
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-semibold">Stock initial <span class="text-danger">*</span></label>
+                            <input type="number" class="form-control" @bind="_editing.Stock" min="0" placeholder="0" />
+                            <small class="text-muted">Quantité en stock à la création.</small>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-semibold">Seuil d'alerte</label>
+                            <input type="number" class="form-control" @bind="_editing.SeuilAlerte" min="0" />
+                            <small class="text-muted">Alerte quand stock ≤ seuil.</small>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="form-check mt-4">
+                                <input class="form-check-input" type="checkbox" @bind="_editing.Actif" />
+                                <label class="form-check-label fw-semibold">Produit actif</label>
+                            </div>
+                        </div>
+                    </div>
+                    @if (_editing.Stock > 0 && _editing.PrixAchat > 0)
+                    {
+                        <div class="alert alert-info small mt-3 mb-0">
+                            <i class="bi bi-calculator me-1"></i>
+                            Coût total d'approvisionnement initial : <strong>@((_editing.Stock * _editing.PrixAchat).ToString("N2")) €</strong>
+                            (@_editing.Stock unité(s) × @_editing.PrixAchat.ToString("N2") €)
+                        </div>
+                    }
+                    <div class="alert alert-warning small mt-2 mb-0">
+                        <i class="bi bi-lock me-1"></i>
+                        <strong>Attention :</strong> Un produit ne peut plus être modifié après sa création. Il ne pourra qu'être réapprovisionné. Vérifiez les informations.
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" @onclick="CloseModal">Annuler</button>
+                    <button class="btn btn-gold" @onclick="SaveAsync" disabled="@_saving">
+                        @if (_saving) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                        <i class="bi bi-check-lg me-1"></i> Créer le produit
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@* Modal réapprovisionnement *@
+@if (_showRestock)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background-color:rgba(0,0,0,0.5);">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">
+                        <i class="bi bi-plus-circle text-success me-2"></i>Réapprovisionner : @_restockProduit?.Nom
+                    </h5>
+                    <button type="button" class="btn-close" @onclick="() => _showRestock = false"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="alert alert-info small mb-3">
+                        <i class="bi bi-info-circle me-1"></i>Stock actuel : <strong>@_restockProduit?.Stock</strong>
+                    </div>
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Quantité à ajouter <span class="text-danger">*</span></label>
+                            <input type="number" class="form-control" @bind="_restockQuantite" min="1" />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Coût unitaire d'achat (€)</label>
+                            <input type="number" class="form-control" @bind="_restockCout" step="0.01" min="0" />
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">Note</label>
+                            <input type="text" class="form-control" @bind="_restockNote" placeholder="Fournisseur, lot, etc." />
+                        </div>
+                    </div>
+                    <div class="mt-3 p-2 bg-light rounded">
+                        <small class="text-muted">
+                            Coût total : <strong>@((_restockQuantite * _restockCout).ToString("N2")) €</strong> —
+                            Stock après : <strong>@((_restockProduit?.Stock ?? 0) + _restockQuantite)</strong>
+                        </small>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" @onclick="() => _showRestock = false">Annuler</button>
+                    <button class="btn btn-success" @onclick="RestockAsync" disabled="@_saving">
+                        @if (_saving) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                        <i class="bi bi-check-lg me-1"></i> Réapprovisionner
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+<ConfirmModal IsVisible="_showDelete" Title="Supprimer le produit"
+              TitleCss="text-danger" Icon="bi-exclamation-triangle"
+              ConfirmText="Supprimer" IsProcessing="_deleting"
+              OnConfirm="DeleteAsync" OnCancel="() => _showDelete = false">
+    <p>Supprimer <strong>@_toDelete?.Nom</strong> ?</p>
+</ConfirmModal>
+
+@code {
+    private List<Produit> _all = [], _filtered = [], _alertes = [];
+    private List<string> _categories = [];
+    private bool _loading = true, _showModal, _saving, _showDelete, _deleting, _showRestock;
+    private Produit _editing = new();
+    private Produit? _toDelete;
+    private Produit? _restockProduit;
+    private int _restockQuantite = 1;
+    private decimal _restockCout;
+    private string _restockNote = "";
+    private string _search = "", _filterCategorie = "", _alert = "", _alertType = "info";
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await AuthService.InitializeAsync();
+            if (!AuthService.IsSignedIn || !AuthService.CanRead) { Nav.NavigateTo("login"); return; }
+            await LoadAsync();
+        }
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true; StateHasChanged();
+        try
+        {
+            _all = await ProduitSvc.GetAllAsync(true);
+            _alertes = _all.Where(p => p.Actif && p.EstEnAlerte).ToList();
+            _categories = _all.Select(p => p.Categorie).Where(c => !string.IsNullOrEmpty(c)).Distinct().OrderBy(c => c).ToList();
+            Filter();
+        }
+        catch (Exception ex) { _alert = ex.Message; _alertType = "danger"; }
+        finally { _loading = false; StateHasChanged(); }
+    }
+
+    private void OnSearch(string val) { _search = val; Filter(); StateHasChanged(); }
+
+    private void Filter()
+    {
+        var q = _all.AsEnumerable();
+        if (!string.IsNullOrWhiteSpace(_search))
+        {
+            var t = _search.ToLower();
+            q = q.Where(p => p.Nom.Contains(t, StringComparison.OrdinalIgnoreCase) || p.Marque.Contains(t, StringComparison.OrdinalIgnoreCase));
+        }
+        if (!string.IsNullOrEmpty(_filterCategorie))
+            q = q.Where(p => p.Categorie == _filterCategorie);
+        _filtered = q.OrderBy(p => p.Nom).ToList();
+        StateHasChanged();
+    }
+
+    private void ShowAdd() { _editing = new Produit { Actif = true, SeuilAlerte = 5 }; _showModal = true; }
+    private void CloseModal() { _showModal = false; _editing = new(); }
+    private void ConfirmDelete(Produit p) { _toDelete = p; _showDelete = true; }
+
+    private void ShowRestock(Produit p)
+    {
+        _restockProduit = p;
+        _restockQuantite = 1;
+        _restockCout = p.PrixAchat;
+        _restockNote = "";
+        _showRestock = true;
+    }
+
+    private async Task SaveAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_editing.Nom)) { _alert = "Le nom du produit est requis."; _alertType = "warning"; return; }
+        if (_editing.PrixVente <= 0) { _alert = "Le prix de vente est requis."; _alertType = "warning"; return; }
+        if (_editing.PrixAchat <= 0) { _alert = "Le prix d'achat est requis."; _alertType = "warning"; return; }
+
+        _saving = true; StateHasChanged();
+        try
+        {
+            // Sauvegarder le stock initial avant création (car AddAsync remet à 0 le stock interne)
+            var stockInitial = _editing.Stock;
+            var prixAchat = _editing.PrixAchat;
+
+            // 1. Créer le produit (avec stock initial = 0, sera ajusté par le mouvement)
+            _editing.Stock = 0; // Le stock sera géré par le mouvement
+            var guid = await ProduitSvc.AddAsync(_editing);
+
+            // 2. Générer un mouvement de stock d'entrée (approvisionnement initial)
+            if (stockInitial > 0)
+            {
+                await MouvementSvc.ReapprovisionnerAsync(guid, stockInitial, prixAchat,
+                    "Stock initial à la création du produit");
+            }
+
+            // 3. Enregistrer l'écriture financière (charge d'achat fournisseur)
+            if (stockInitial > 0 && prixAchat > 0)
+            {
+                var ajustement = new Models.AjustementFinancier
+                {
+                    Date = DateTime.Now.ToString("dd/MM/yyyy"),
+                    Type = "charge",
+                    Montant = -(stockInitial * prixAchat),
+                    Description = $"Achat initial : {_editing.Nom} ({stockInitial} unité(s) × {prixAchat:N2} €)",
+                    Categorie = "Achat produit",
+                    CategorieComptable = "produit",
+                    Note = $"Création produit {_editing.Nom}"
+                };
+                await AjustSvc.AddAsync(ajustement);
+            }
+
+            CloseModal(); await LoadAsync();
+            _alert = $"Produit « {_editing.Nom} » créé avec succès" +
+                     (stockInitial > 0 ? $" — Stock initial : {stockInitial}, Coût : {(stockInitial * prixAchat):N2} €" : "") + ".";
+            _alertType = "success";
+        }
+        catch (Exception ex) { _alert = ex.Message; _alertType = "danger"; }
+        finally { _saving = false; StateHasChanged(); }
+    }
+
+    private async Task RestockAsync()
+    {
+        if (_restockProduit == null || _restockQuantite <= 0) return;
+        _saving = true; StateHasChanged();
+        try
+        {
+            // 1. Mouvement de stock
+            await MouvementSvc.ReapprovisionnerAsync(
+                _restockProduit.Guid, _restockQuantite, _restockCout, _restockNote);
+
+            // 2. Écriture financière (charge d'achat)
+            if (_restockCout > 0)
+            {
+                var ajustement = new Models.AjustementFinancier
+                {
+                    Date = DateTime.Now.ToString("dd/MM/yyyy"),
+                    Type = "charge",
+                    Montant = -(_restockQuantite * _restockCout),
+                    Description = $"Réapprovisionnement : {_restockProduit.Nom} ({_restockQuantite} × {_restockCout:N2} €)",
+                    Categorie = "Achat produit",
+                    CategorieComptable = "produit",
+                    Note = _restockNote
+                };
+                await AjustSvc.AddAsync(ajustement);
+            }
+
+            _showRestock = false;
+            _alert = $"{_restockQuantite} unité(s) ajoutée(s) au stock de {_restockProduit.Nom}. Coût : {(_restockQuantite * _restockCout):N2} €.";
+            _alertType = "success";
+            await LoadAsync();
+        }
+        catch (Exception ex) { _alert = ex.Message; _alertType = "danger"; }
+        finally { _saving = false; StateHasChanged(); }
+    }
+
+    private async Task DeleteAsync()
+    {
+        if (_toDelete == null) return;
+        _deleting = true; StateHasChanged();
+        try { await ProduitSvc.DeleteAsync(_toDelete.RowIndex); _showDelete = false; await LoadAsync(); }
+        catch (Exception ex) { _alert = ex.Message; _alertType = "danger"; }
+        finally { _deleting = false; StateHasChanged(); }
+    }
+}

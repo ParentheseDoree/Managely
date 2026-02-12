@@ -1,0 +1,52 @@
+@* Modal de confirmation réutilisable *@
+
+@if (IsVisible)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title @TitleCss">
+                        @if (!string.IsNullOrEmpty(Icon))
+                        {
+                            <i class="bi @Icon me-2"></i>
+                        }
+                        @Title
+                    </h5>
+                    <button type="button" class="btn-close" @onclick="Cancel"></button>
+                </div>
+                <div class="modal-body">
+                    @ChildContent
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="Cancel" disabled="@IsProcessing">
+                        Annuler
+                    </button>
+                    <button type="button" class="btn @ConfirmBtnClass" @onclick="Confirm" disabled="@IsProcessing">
+                        @if (IsProcessing)
+                        {
+                            <span class="spinner-border spinner-border-sm me-1"></span>
+                        }
+                        @ConfirmText
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public bool IsVisible { get; set; }
+    [Parameter] public string Title { get; set; } = "Confirmer";
+    [Parameter] public string TitleCss { get; set; } = "";
+    [Parameter] public string Icon { get; set; } = "";
+    [Parameter] public string ConfirmText { get; set; } = "Confirmer";
+    [Parameter] public string ConfirmBtnClass { get; set; } = "btn-danger";
+    [Parameter] public bool IsProcessing { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public EventCallback OnConfirm { get; set; }
+    [Parameter] public EventCallback OnCancel { get; set; }
+
+    private async Task Confirm() => await OnConfirm.InvokeAsync();
+    private async Task Cancel() => await OnCancel.InvokeAsync();
+}

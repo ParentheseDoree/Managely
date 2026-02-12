@@ -1,0 +1,34 @@
+@* Composant d'alerte réutilisable *@
+
+@if (!string.IsNullOrEmpty(Message))
+{
+    <div class="alert @CssClass alert-dismissible fade show" role="alert">
+        @if (!string.IsNullOrEmpty(Icon))
+        {
+            <i class="bi @Icon me-2"></i>
+        }
+        @Message
+        <button type="button" class="btn-close" @onclick="Dismiss"></button>
+    </div>
+}
+
+@code {
+    [Parameter] public string Message { get; set; } = "";
+    [Parameter] public string Type { get; set; } = "info"; // info, success, warning, danger
+    [Parameter] public string Icon { get; set; } = "";
+    [Parameter] public EventCallback OnDismiss { get; set; }
+
+    private string CssClass => Type switch
+    {
+        "success" => "alert-success",
+        "warning" => "alert-warning",
+        "danger" => "alert-danger",
+        _ => "alert-info"
+    };
+
+    private async Task Dismiss()
+    {
+        if (OnDismiss.HasDelegate)
+            await OnDismiss.InvokeAsync();
+    }
+}
