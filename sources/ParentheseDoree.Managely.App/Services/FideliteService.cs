@@ -96,11 +96,15 @@ public sealed class FideliteService
         if (!EstMoisAnniv(client.MoisAnniversaire, moisActuel))
             return null;
 
-        // Vérifier qu'on n'a pas déjà généré un bon anniversaire ce mois
+        // Vérifier qu'on n'a pas déjà généré un bon anniversaire ce mois/année
         var cartes = await _cartes.GetByClientAsync(clientGuid);
         var moisStr = DateTime.Now.ToString("MM/yyyy");
+        var anneeStr = DateTime.Now.Year.ToString();
         var dejaGenere = cartes.Any(c =>
-            c.Type == "bon_fidelite" && c.Origine.Contains($"Anniversaire {moisStr}"));
+            c.Type == "bon_fidelite"
+            && (c.Origine.Contains($"Anniversaire {moisStr}")
+                || (c.Origine.Contains("Anniversaire") && c.DateCreation.Contains(anneeStr)
+                    && c.StatutCalcule is "active" or "utilisee")));
         if (dejaGenere)
             return null;
 
@@ -134,7 +138,7 @@ public sealed class FideliteService
     /// </summary>
     public bool BonAnniversaireUtilisable(decimal totalPrestationsPassage)
     {
-        return totalPrestationsPassage > 60m;
+        return totalPrestationsPassage >= 60m;
     }
 
     /// <summary>

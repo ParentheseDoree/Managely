@@ -3,8 +3,8 @@
 @inject ClientService ClientSvc
 @inject CarteCadeauService CarteSvc
 @inject ProduitService ProduitSvc
-@inject AjustementService AjustSvc
 @inject GoogleAuthService AuthService
+@inject ToastService Toast
 @inject NavigationManager Nav
 
 <PageTitle>Passages - Managely</PageTitle>
@@ -22,13 +22,11 @@
     }
 </div>
 
-<AlertMessage Message="@_alert" Type="@_alertType" OnDismiss="() => _alert = string.Empty" />
-
 <div class="card mb-4 border-0 shadow-sm">
     <div class="card-body">
         <div class="row g-3 align-items-center">
             <div class="col-md-4">
-                <SearchBar Value="@_search" ValueChanged="OnSearch" Placeholder="Rechercher..." />
+                <SearchBar Value="@_search" ValueChanged="OnSearch" Placeholder="Rechercher (client, date, prestation)..." />
             </div>
             <div class="col-md-2">
                 <button class="btn btn-outline-secondary w-100" @onclick="LoadAsync" disabled="@_loading">
@@ -51,13 +49,13 @@
 @if (_loading) { <LoadingSpinner /> }
 else if (_filtered.Count == 0)
 {
-    <div class="alert alert-info"><i class="bi bi-info-circle me-2"></i>Aucun passage enregistré.</div>
+    <div class="alert alert-info"><i class="bi bi-info-circle me-2"></i>Aucun passage trouvé.</div>
 }
 else
 {
     @* Vue mobile : cards *@
     <div class="d-md-none">
-        @foreach (var p in _filtered)
+        @foreach (var p in GetPage())
         {
             <div class="card border-0 shadow-sm mb-2 cursor-pointer" @onclick='() => Nav.NavigateTo($"passages/{p.Guid}")'>
                 <div class="card-body p-3">
@@ -99,7 +97,7 @@ else
                     </tr>
                 </thead>
                 <tbody>
-                    @foreach (var p in _filtered)
+                    @foreach (var p in GetPage())
                     {
                         <tr>
                             <td><i class="bi bi-calendar3 me-1 text-muted"></i>@p.Date</td>
@@ -112,7 +110,7 @@ else
                                 }
                             </td>
                             <td class="text-end"><strong>@p.Total.ToString("N2") €</strong></td>
-                            <td>@p.ModePaiement</td>
+                            <td>@(string.IsNullOrEmpty(p.ModePaiement) ? "—" : p.ModePaiement)</td>
                             <td class="text-end">
                                 <button class="btn btn-sm btn-outline-primary me-1"
                                         @onclick='() => Nav.NavigateTo($"passages/{p.Guid}")' title="Détails">
@@ -131,6 +129,28 @@ else
             </table>
         </div>
     </div>
+
+    @* Pagination *@
+    @if (TotalPages > 1)
+    {
+        <nav class="mt-3 d-flex justify-content-center">
+            <ul class="pagination pagination-sm mb-0">
+                <li class="page-item @(_page <= 1 ? "disabled" : "")">
+                    <button class="page-link" @onclick="() => GoToPage(_page - 1)"><i class="bi bi-chevron-left"></i></button>
+                </li>
+                @for (int i = StartPage; i <= EndPage; i++)
+                {
+                    var pg = i;
+                    <li class="page-item @(pg == _page ? "active" : "")">
+                        <button class="page-link" @onclick="() => GoToPage(pg)">@pg</button>
+                    </li>
+                }
+                <li class="page-item @(_page >= TotalPages ? "disabled" : "")">
+                    <button class="page-link" @onclick="() => GoToPage(_page + 1)"><i class="bi bi-chevron-right"></i></button>
+                </li>
+            </ul>
+        </nav>
+    }
 }
 
 <ConfirmModal IsVisible="_showDelete" Title="Supprimer le passage"
@@ -145,12 +165,11 @@ else
             {
                 <li>Restaurer le stock des @_toDelete.ProduitsVendus.Count produit(s) vendu(s)</li>
             }
-            @if (_toDelete?.Paiements.Any(p => p.Mode == "Carte cadeau") == true || 
+            @if (_toDelete?.Paiements.Any(p => p.Mode == "Carte cadeau") == true ||
                  (!string.IsNullOrEmpty(_toDelete?.CarteCadeauGuid) && _toDelete?.MontantCarteUtilisee > 0))
             {
                 <li>Restaurer le solde de la/des carte(s) cadeau utilisée(s)</li>
             }
-            <li>Créer un ajustement financier d'annulation pour la traçabilité</li>
         </ul>
     </div>
 </ConfirmModal>
@@ -160,7 +179,16 @@ else
     private Dictionary<string, string> _clientNoms = new();
     private bool _loading = true, _sortAsc = false, _showDelete, _deleting;
     private Passage? _toDelete;
-    private string _search = "", _alert = "", _alertType = "info";
+    private string _search = "";
+
+    // Pagination
+    private int _page = 1;
+    private const int PageSize = 25;
+    private int TotalPages => Math.Max(1, (int)Math.Ceiling(_filtered.Count / (double)PageSize));
+    private int StartPage => Math.Max(1, _page - 2);
+    private int EndPage => Math.Min(TotalPages, _page + 2);
+    private List<Passage> GetPage() => _filtered.Skip((_page - 1) * PageSize).Take(PageSize).ToList();
+    private void GoToPage(int p) { _page = Math.Clamp(p, 1, TotalPages); StateHasChanged(); }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -182,22 +210,24 @@ else
             _clientNoms = clients.ToDictionary(c => c.Guid, c => c.NomComplet);
             Filter();
         }
-        catch (Exception ex) { _alert = ex.Message; _alertType = "danger"; }
+        catch (Exception ex) { Toast.ShowError(ex.Message); }
         finally { _loading = false; StateHasChanged(); }
     }
 
     private string GetClientNom(string guid) => _clientNoms.TryGetValue(guid, out var n) ? n : guid;
 
-    private void OnSearch(string val) { _search = val; Filter(); StateHasChanged(); }
+    private void OnSearch(string val) { _search = val; _page = 1; Filter(); StateHasChanged(); }
 
     private void Filter()
     {
         var q = _all.AsEnumerable();
         if (!string.IsNullOrWhiteSpace(_search))
         {
-            var t = _search.ToLower();
-            q = q.Where(p => GetClientNom(p.ClientGuid).Contains(t, StringComparison.OrdinalIgnoreCase)
-                || p.Date.Contains(t) || p.ResumePrestations.Contains(t, StringComparison.OrdinalIgnoreCase));
+            var t = Client.SupprimerAccents(_search.ToLower());
+            q = q.Where(p =>
+                Client.SupprimerAccents(GetClientNom(p.ClientGuid)).Contains(t, StringComparison.OrdinalIgnoreCase)
+                || p.Date.Contains(t)
+                || Client.SupprimerAccents(p.ResumePrestations).Contains(t, StringComparison.OrdinalIgnoreCase));
         }
         _filtered = (_sortAsc ? q.OrderBy(p => p.Date) : q.OrderByDescending(p => p.Date)).ToList();
     }
@@ -253,29 +283,13 @@ else
                 }
             }
 
-            // 3. Enregistrer un ajustement d'annulation pour traçabilité
-            if (_toDelete.Total > 0)
-            {
-                var ajust = new Models.AjustementFinancier
-                {
-                    Date = DateTime.Now.ToString("dd/MM/yyyy"),
-                    Type = "ajustement",
-                    Montant = -_toDelete.Total,
-                    Description = $"Annulation passage du {_toDelete.Date} ({GetClientNom(_toDelete.ClientGuid)})",
-                    Categorie = "Annulation",
-                    CategorieComptable = "autre",
-                    Note = $"Passage supprimé (GUID: {_toDelete.Guid})"
-                };
-                await AjustSvc.AddAsync(ajust);
-            }
-
-            // 4. Supprimer le passage
+            // 3. Supprimer le passage
             await PassageSvc.DeleteAsync(_toDelete.RowIndex);
             _showDelete = false;
-            _alert = "Passage supprimé. Stock et cartes restaurés."; _alertType = "success";
+            Toast.ShowSuccess("Passage supprimé avec succès.");
             await LoadAsync();
         }
-        catch (Exception ex) { _alert = ex.Message; _alertType = "danger"; }
+        catch (Exception ex) { Toast.ShowError(ex.Message); }
         finally { _deleting = false; StateHasChanged(); }
     }
 }

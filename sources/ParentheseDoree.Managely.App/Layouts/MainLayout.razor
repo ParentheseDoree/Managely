@@ -3,6 +3,8 @@
 @inject NavigationManager NavigationManager
 @implements IDisposable
 
+<ToastContainer />
+
 @if (_isAuthenticated)
 {
     <div class="app-layout">
@@ -36,9 +38,6 @@
                 </NavLink>
                 <NavLink class="sidebar-link" href="cartes-cadeaux" @onclick="CloseSidebar">
                     <i class="bi bi-wallet2"></i><span>Cartes & Bons</span>
-                </NavLink>
-                <NavLink class="sidebar-link" href="finance" @onclick="CloseSidebar">
-                    <i class="bi bi-graph-up"></i><span>Finance</span>
                 </NavLink>
                 <NavLink class="sidebar-link" href="parametres" @onclick="CloseSidebar">
                     <i class="bi bi-gear"></i><span>Paramètres</span>
@@ -102,13 +101,8 @@ else
     {
         if (firstRender)
         {
-            // S'abonner aux changements d'état d'authentification
             AuthService.OnAuthStateChanged += HandleAuthStateChanged;
-
-            // Initialiser l'auth et restaurer la session
             await AuthService.InitializeAsync();
-
-            // Mettre à jour l'état après restauration
             _isAuthenticated = AuthService.IsSignedIn && AuthService.CanRead;
             StateHasChanged();
         }

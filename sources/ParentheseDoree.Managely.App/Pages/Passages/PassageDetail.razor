@@ -2,6 +2,7 @@
 @inject PassageService PassageSvc
 @inject ClientService ClientSvc
 @inject GoogleAuthService AuthService
+@inject ToastService Toast
 @inject NavigationManager Nav
 @inject IJSRuntime JSRuntime
 
@@ -17,7 +18,7 @@ else
     <div class="page-header">
         <div>
             <h1><i class="bi bi-calendar-check me-2"></i>Passage du @_passage.Date</h1>
-            <p>Client : <strong>@_clientNom</strong></p>
+            <p>Client : <a href="clients/@_passage.ClientGuid" class="text-decoration-none"><strong>@_clientNom</strong></a></p>
         </div>
         <div class="d-flex gap-2">
             @if (AuthService.CanWrite)
@@ -37,37 +38,44 @@ else
             @* Prestations *@
             <div class="card border-0 shadow-sm mb-4">
                 <div class="card-header pt-3"><h5 class="mb-0"><i class="bi bi-scissors me-2 text-gold"></i>Prestations (@_passage.Prestations.Count)</h5></div>
-                <div class="card-body p-0">
-                    <table class="table mb-0">
-                        <thead><tr><th>Soin</th><th class="text-end">Prix</th><th>Durée</th></tr></thead>
-                        <tbody>
-                            @foreach (var p in _passage.Prestations)
-                            {
-                                <tr>
-                                    <td>@p.Nom</td>
-                                    <td class="text-end fw-bold">@p.Prix.ToString("N2") €</td>
-                                    <td>@(p.DureeMinutes > 0 ? $"{p.DureeMinutes} min" : "—")</td>
-                                </tr>
-                            }
-                        </tbody>
-                    </table>
-                </div>
+                @if (_passage.Prestations.Count == 0)
+                {
+                    <div class="card-body text-muted">Aucune prestation pour ce passage.</div>
+                }
+                else
+                {
+                    <div class="card-body p-0">
+                        <table class="table mb-0">
+                            <thead><tr><th>Soin</th><th class="text-end">Prix</th><th>Durée</th></tr></thead>
+                            <tbody>
+                                @foreach (var p in _passage.Prestations)
+                                {
+                                    <tr>
+                                        <td>@p.Nom</td>
+                                        <td class="text-end fw-bold">@p.Prix.ToString("N2") €</td>
+                                        <td>@(p.DureeMinutes > 0 ? $"{p.DureeMinutes} min" : "—")</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
             </div>
 
             @* Produits vendus *@
             @if (_passage.ProduitsVendus.Count > 0)
             {
                 <div class="card border-0 shadow-sm mb-4">
-                    <div class="card-header pt-3"><h5 class="mb-0"><i class="bi bi-bag me-2 text-gold"></i>Produits vendus</h5></div>
+                    <div class="card-header pt-3"><h5 class="mb-0"><i class="bi bi-bag me-2 text-gold"></i>Produits vendus (@_passage.ProduitsVendus.Count)</h5></div>
                     <div class="card-body p-0">
                         <table class="table mb-0">
-                            <thead><tr><th>Produit</th><th>Qté</th><th class="text-end">Prix unit.</th><th class="text-end">Total</th></tr></thead>
+                            <thead><tr><th>Produit</th><th class="text-center">Qté</th><th class="text-end">Prix unit.</th><th class="text-end">Total</th></tr></thead>
                             <tbody>
                                 @foreach (var p in _passage.ProduitsVendus)
                                 {
                                     <tr>
                                         <td>@p.Nom</td>
-                                        <td>@p.Quantite</td>
+                                        <td class="text-center">@p.Quantite</td>
                                         <td class="text-end">@p.PrixUnitaire.ToString("N2") €</td>
                                         <td class="text-end fw-bold">@p.Total.ToString("N2") €</td>
                                     </tr>
@@ -118,9 +126,27 @@ else
                     <h5 class="mb-3">Récapitulatif</h5>
                     <dl>
                         <dt class="small text-muted">Date</dt><dd>@_passage.Date</dd>
+                        <dt class="small text-muted">Client</dt>
+                        <dd><a href="clients/@_passage.ClientGuid" class="text-decoration-none">@_clientNom</a></dd>
                         <dt class="small text-muted">Mode de paiement</dt>
-                        <dd>@(string.IsNullOrEmpty(_passage.ModePaiement) ? "—" : _passage.ModePaiement)</dd>
+                        <dd>@(!string.IsNullOrEmpty(_passage.ResumePaiements) ? _passage.ResumePaiements : (string.IsNullOrEmpty(_passage.ModePaiement) ? "—" : _passage.ModePaiement))</dd>
                     </dl>
+
+                    @if (_passage.Prestations.Count > 0)
+                    {
+                        <div class="d-flex justify-content-between small mb-1">
+                            <span>Prestations</span>
+                            <span>@_passage.Prestations.Sum(p => p.Prix).ToString("N2") €</span>
+                        </div>
+                    }
+                    @if (_passage.ProduitsVendus.Count > 0)
+                    {
+                        <div class="d-flex justify-content-between small mb-1">
+                            <span>Produits</span>
+                            <span>@_passage.ProduitsVendus.Sum(p => p.Total).ToString("N2") €</span>
+                        </div>
+                    }
+
                     <hr />
                     <div class="d-flex justify-content-between">
                         <span class="fs-5 fw-bold">Total</span>

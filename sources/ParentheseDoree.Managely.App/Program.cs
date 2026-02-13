@@ -34,6 +34,9 @@ public static class Program
         // Cache
         builder.Services.AddSingleton<CacheService>();
 
+        // Toast
+        builder.Services.AddSingleton<ToastService>();
+
         // Auth Google
         builder.Services.AddScoped(sp =>
             new GoogleAuthService(
@@ -54,8 +57,6 @@ public static class Program
         builder.Services.AddScoped<CarteCadeauService>();
         builder.Services.AddScoped<FideliteService>();
         builder.Services.AddScoped<MouvementStockService>();
-        builder.Services.AddScoped<AjustementService>();
-        builder.Services.AddScoped<FinanceService>();
 
         await builder.Build().RunAsync();
     }

@@ -8,6 +8,7 @@
 @inject FideliteService FideliteSvc
 @inject MouvementStockService MouvementSvc
 @inject GoogleAuthService AuthService
+@inject ToastService Toast
 @inject NavigationManager Nav
 @inject IJSRuntime JSRuntime
 
@@ -56,7 +57,7 @@
                     <div class="col-md-6">
                         <label class="form-label">Client <span class="text-danger">*</span></label>
                         <div class="position-relative">
-                            <input type="text" class="form-control"
+                            <input type="text" class="form-control @(string.IsNullOrEmpty(_passage.ClientGuid) && _triedSave ? "is-invalid" : "")"
                                    placeholder="Rechercher un client..."
                                    value="@_clientSearchText"
                                    @oninput="OnClientSearch"
@@ -86,11 +87,20 @@
                                     }
                                 </div>
                             }
+                            @if (string.IsNullOrEmpty(_passage.ClientGuid) && _triedSave)
+                            {
+                                <div class="invalid-feedback">Veuillez sélectionner un client dans la liste.</div>
+                            }
                         </div>
                     </div>
                     <div class="col-md-3">
                         <label class="form-label">Date <span class="text-danger">*</span></label>
-                        <input type="text" class="form-control" @bind="_passage.Date" placeholder="JJ/MM/AAAA" />
+                        <input type="text" class="form-control @(string.IsNullOrEmpty(_passage.Date) && _triedSave ? "is-invalid" : "")"
+                               @bind="_passage.Date" placeholder="JJ/MM/AAAA" />
+                        @if (string.IsNullOrEmpty(_passage.Date) && _triedSave)
+                        {
+                            <div class="invalid-feedback">La date est requise.</div>
+                        }
                     </div>
                 </div>
             </div>
@@ -103,6 +113,12 @@
                 <button class="btn btn-sm btn-outline-gold" @onclick="AddPrestation"><i class="bi bi-plus"></i> Ajouter une prestation</button>
             </div>
             <div class="card-body">
+                @if (_passage.Prestations.Count == 0 && _passage.ProduitsVendus.Count == 0 && _triedSave)
+                {
+                    <div class="alert alert-warning small py-2 mb-2">
+                        <i class="bi bi-exclamation-triangle me-1"></i>Ajoutez au moins une prestation ou un produit vendu.
+                    </div>
+                }
                 @if (_passage.Prestations.Count == 0)
                 {
                     <p class="text-muted mb-0"><i class="bi bi-info-circle me-1"></i>Aucune prestation ajoutée. Cliquez sur « Ajouter » pour sélectionner un soin du catalogue.</p>
@@ -114,12 +130,12 @@
                     <div class="row g-2 mb-2 align-items-end">
                         <div class="col-md-5">
                             <label class="form-label small text-muted mb-0">Soin</label>
-                            <select class="form-select form-select-sm" value="@pp.PrestationId"
-                                    @onchange="(e) => OnPrestationSelected(idx, e)">
+                            <select class="form-select form-select-sm @(string.IsNullOrEmpty(pp.PrestationId) && _triedSave ? "is-invalid" : "")"
+                                    value="@pp.PrestationId" @onchange="(e) => OnPrestationSelected(idx, e)">
                                 <option value="">-- Choisir un soin --</option>
                                 @foreach (var p in _prestationsCatalogue)
                                 {
-                                    <option value="@p.Guid">@p.Nom (@p.PrixDefaut €)</option>
+                                    <option value="@p.Guid">@p.Nom (@p.PrixDefaut.ToString("N2") €)</option>
                                 }
                             </select>
                         </div>
@@ -154,21 +170,27 @@
                 {
                     var idx = i;
                     var pv = _passage.ProduitsVendus[idx];
+                    var produitStock = _produitsCatalogue.FirstOrDefault(p => p.Guid == pv.ProduitId);
                     <div class="row g-2 mb-2 align-items-end">
                         <div class="col-md-4">
                             <label class="form-label small text-muted mb-0">Produit</label>
-                            <select class="form-select form-select-sm" value="@pv.ProduitId"
-                                    @onchange="(e) => OnProduitVenduSelected(idx, e)">
+                            <select class="form-select form-select-sm @(string.IsNullOrEmpty(pv.ProduitId) && _triedSave ? "is-invalid" : "")"
+                                    value="@pv.ProduitId" @onchange="(e) => OnProduitVenduSelected(idx, e)">
                                 <option value="">-- Choisir un produit --</option>
                                 @foreach (var p in _produitsCatalogue)
                                 {
-                                    <option value="@p.Guid">@p.Nom (@p.PrixVente €) [stock: @p.Stock]</option>
+                                    <option value="@p.Guid">@p.Nom (@p.PrixVente.ToString("N2") €) [stock: @p.Stock]</option>
                                 }
                             </select>
                         </div>
                         <div class="col-md-2">
                             <label class="form-label small text-muted mb-0">Quantité</label>
-                            <input type="number" class="form-control form-control-sm" @bind="pv.Quantite" min="1" placeholder="1" />
+                            <input type="number" class="form-control form-control-sm @(produitStock != null && pv.Quantite > produitStock.Stock ? "is-invalid" : "")"
+                                   @bind="pv.Quantite" min="1" placeholder="1" />
+                            @if (produitStock != null && pv.Quantite > produitStock.Stock)
+                            {
+                                <div class="invalid-feedback">Stock insuffisant (@produitStock.Stock dispo)</div>
+                            }
                         </div>
                         <div class="col-md-3">
                             <label class="form-label small text-muted mb-0">Prix unit. (€)</label>
@@ -186,7 +208,56 @@
             </div>
         </div>
 
-        @* Produits conseillés (hybride : catalogue ou texte libre) *@
+        @* Produits utilisés durant la prestation (décrémente le stock, pas facturé) *@
+        <div class="card border-0 shadow-sm mb-4">
+            <div class="card-header pt-3 d-flex justify-content-between align-items-center">
+                <h5 class="mb-0"><i class="bi bi-droplet me-2 text-gold"></i>Produits utilisés (stock)</h5>
+                <button class="btn btn-sm btn-outline-gold" @onclick="AddProduitUtilise"><i class="bi bi-plus"></i> Ajouter</button>
+            </div>
+            <div class="card-body">
+                @if (_produitsUtilises.Count == 0)
+                {
+                    <p class="text-muted mb-0"><i class="bi bi-info-circle me-1"></i>Produits consommés durant la prestation (non facturés, décrémentés du stock).</p>
+                }
+                @for (int i = 0; i < _produitsUtilises.Count; i++)
+                {
+                    var idx = i;
+                    var pu = _produitsUtilises[idx];
+                    var puStock = _produitsCatalogue.FirstOrDefault(p => p.Guid == pu.ProduitId);
+                    <div class="row g-2 mb-2 align-items-end">
+                        <div class="col-md-6">
+                            <label class="form-label small text-muted mb-0">Produit</label>
+                            <select class="form-select form-select-sm" value="@pu.ProduitId"
+                                    @onchange="(e) => OnProduitUtiliseSelected(idx, e)">
+                                <option value="">-- Choisir --</option>
+                                @foreach (var p in _produitsCatalogue)
+                                {
+                                    <option value="@p.Guid">@p.Nom (@p.Marque) [stock: @p.Stock]</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label small text-muted mb-0">Quantité</label>
+                            <input type="number" class="form-control form-control-sm @(puStock != null && pu.Quantite > puStock.Stock ? "is-invalid" : "")"
+                                   @bind="pu.Quantite" min="1" />
+                            @if (puStock != null && pu.Quantite > puStock.Stock)
+                            {
+                                <div class="invalid-feedback">Stock insuffisant</div>
+                            }
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label small text-muted mb-0">Stock</label>
+                            <div class="small fw-bold">@(puStock?.Stock.ToString() ?? "—")</div>
+                        </div>
+                        <div class="col-md-1">
+                            <button class="btn btn-sm btn-outline-danger" @onclick="() => _produitsUtilises.RemoveAt(idx)"><i class="bi bi-x"></i></button>
+                        </div>
+                    </div>
+                }
+            </div>
+        </div>
+
+        @* Produits conseillés *@
         <div class="card border-0 shadow-sm mb-4">
             <div class="card-header pt-3 d-flex justify-content-between align-items-center">
                 <h5 class="mb-0"><i class="bi bi-lightbulb me-2 text-gold"></i>Produits conseillés</h5>
@@ -215,8 +286,7 @@
                                 </select>
                                 @if (pc.EstTexteLibre)
                                 {
-                                    <input type="text" class="form-control form-control-sm" @bind="pc.Nom"
-                                           placeholder="Nom libre..." />
+                                    <input type="text" class="form-control form-control-sm" @bind="pc.Nom" placeholder="Nom libre..." />
                                 }
                             </div>
                         </div>
@@ -243,26 +313,56 @@
 
     @* Colonne droite : paiement + récapitulatif *@
     <div class="col-lg-4">
-        @* Paiement multi-moyens *@
+        @* Cartes & Bons disponibles pour ce client *@
+        @if (_cartesClient.Count > 0)
+        {
+            <div class="card border-0 shadow-sm mb-4 border-start border-3 border-info">
+                <div class="card-header pt-3"><h6 class="mb-0"><i class="bi bi-wallet2 me-2 text-info"></i>Cartes & Bons du client</h6></div>
+                <div class="card-body p-2">
+                    @foreach (var cc in _cartesClient)
+                    {
+                        <div class="d-flex justify-content-between align-items-center p-2 mb-1 bg-light rounded small">
+                            <div>
+                                <span class="badge @(cc.Type switch { "fidelite" => "bg-warning text-dark", "bon_fidelite" => "bg-info", _ => "bg-primary" }) me-1">
+                                    @(cc.Type switch { "fidelite" => "Fidélité", "bon_fidelite" => "Bon Anniv.", _ => "Cadeau" })
+                                </span>
+                                @if (!string.IsNullOrEmpty(cc.Origine))
+                                {
+                                    <span class="text-muted">@cc.Origine</span>
+                                }
+                            </div>
+                            <strong class="text-success">@cc.SoldeRestant.ToString("N2") €</strong>
+                        </div>
+                    }
+                </div>
+            </div>
+        }
+
+        @* Paiement *@
         <div class="card border-0 shadow-sm mb-4">
             <div class="card-header pt-3 d-flex justify-content-between align-items-center">
                 <h5 class="mb-0"><i class="bi bi-credit-card me-2"></i>Paiement</h5>
-                <button class="btn btn-sm btn-outline-gold" @onclick="AddPaiement" title="Ajouter un moyen de paiement"><i class="bi bi-plus"></i> Fractionner</button>
+                <button class="btn btn-sm btn-outline-gold" @onclick="AddPaiement" title="Fractionner"><i class="bi bi-plus"></i> Fractionner</button>
             </div>
             <div class="card-body">
                 @if (_passage.Paiements.Count == 0)
                 {
-                    <label class="form-label small fw-semibold">Mode de paiement unique</label>
-                    <select class="form-select form-select-sm" @bind="_passage.ModePaiement">
-                        <option value="">-- Sélectionner le mode de paiement --</option>
+                    <label class="form-label small fw-semibold">Mode de paiement <span class="text-danger">*</span></label>
+                    <select class="form-select form-select-sm @(string.IsNullOrEmpty(_passage.ModePaiement) && _triedSave ? "is-invalid" : "")"
+                            @bind="_passage.ModePaiement">
+                        <option value="">-- Sélectionner --</option>
                         <option value="CB">💳 Carte bancaire</option>
                         <option value="Espèces">💵 Espèces</option>
                         <option value="Chèque">📝 Chèque</option>
                         <option value="Virement">🏦 Virement</option>
                         <option value="Carte cadeau">🎁 Carte / Bon</option>
                     </select>
+                    @if (string.IsNullOrEmpty(_passage.ModePaiement) && _triedSave)
+                    {
+                        <div class="invalid-feedback">Sélectionnez un mode de paiement.</div>
+                    }
                     <small class="text-muted d-block mt-1">
-                        <i class="bi bi-info-circle me-1"></i>Cliquez sur « Fractionner » pour combiner plusieurs moyens de paiement.
+                        <i class="bi bi-info-circle me-1"></i>« Fractionner » pour combiner plusieurs moyens.
                     </small>
                 }
                 else
@@ -276,11 +376,10 @@
                         <div class="border rounded p-2 mb-2 bg-light">
                             <div class="d-flex justify-content-between align-items-center mb-1">
                                 <label class="form-label small mb-0 fw-semibold">Paiement @(idx + 1)</label>
-                                <button class="btn btn-sm text-danger p-0" @onclick="() => RemovePaiement(idx)" title="Supprimer"><i class="bi bi-x-lg"></i></button>
+                                <button class="btn btn-sm text-danger p-0" @onclick="() => RemovePaiement(idx)"><i class="bi bi-x-lg"></i></button>
                             </div>
                             <div class="row g-2">
                                 <div class="col-6">
-                                    <label class="form-label small text-muted mb-0">Mode</label>
                                     <select class="form-select form-select-sm" value="@pay.Mode"
                                             @onchange="(e) => OnPaiementModeChanged(idx, e)">
                                         <option value="CB">💳 CB</option>
@@ -291,21 +390,17 @@
                                     </select>
                                 </div>
                                 <div class="col-6">
-                                    <label class="form-label small text-muted mb-0">Montant (€)</label>
                                     <input type="number" class="form-control form-control-sm" @bind="pay.Montant" step="0.01" min="0" placeholder="0.00" />
                                 </div>
                             </div>
                             @if (pay.Mode == "Carte cadeau")
                             {
                                 <div class="mt-2">
-                                    <label class="form-label small text-muted mb-0">Carte / Bon à utiliser</label>
                                     @if (_cartesClient.Count == 0)
                                     {
                                         <div class="alert alert-warning small py-1 px-2 mb-0 mt-1">
                                             <i class="bi bi-exclamation-triangle me-1"></i>
-                                            @(string.IsNullOrEmpty(_passage.ClientGuid)
-                                                ? "Sélectionnez d'abord un client."
-                                                : "Aucune carte ou bon actif pour ce client.")
+                                            @(string.IsNullOrEmpty(_passage.ClientGuid) ? "Sélectionnez d'abord un client." : "Aucune carte ou bon actif.")
                                         </div>
                                     }
                                     else
@@ -319,17 +414,17 @@
                                         </select>
                                         @if (GetSelectedPayCarte(pay.CarteCadeauGuid) is CarteCadeau selCarte)
                                         {
-                                            <small class="text-muted d-block mt-1">
-                                                <i class="bi bi-wallet2 me-1"></i>Solde : <strong>@selCarte.SoldeRestant.ToString("N2") €</strong>
+                                            <div class="mt-1 p-2 bg-white rounded small">
+                                                <i class="bi bi-wallet2 me-1 text-info"></i>Solde disponible : <strong class="text-success">@selCarte.SoldeRestant.ToString("N2") €</strong>
                                                 @if (pay.Montant > selCarte.SoldeRestant)
                                                 {
-                                                    <span class="text-danger ms-1"><i class="bi bi-exclamation-triangle"></i> Dépasse le solde</span>
+                                                    <br /><span class="text-danger"><i class="bi bi-exclamation-triangle me-1"></i>Montant supérieur au solde !</span>
                                                 }
                                                 @if (selCarte.Type == "bon_fidelite")
                                                 {
-                                                    <span class="text-info d-block"><i class="bi bi-info-circle me-1"></i>Utilisable si prestations &gt; 60 €</span>
+                                                    <br /><span class="text-info"><i class="bi bi-info-circle me-1"></i>Utilisable si prestations ≥ 60 €</span>
                                                 }
-                                            </small>
+                                            </div>
                                         }
                                     }
                                 </div>
@@ -363,9 +458,7 @@
                         {
                             <div class="alert alert-warning small py-1 px-2 mb-0">
                                 <i class="bi bi-exclamation-triangle me-1"></i>
-                                @(string.IsNullOrEmpty(_passage.ClientGuid)
-                                    ? "Sélectionnez d'abord un client."
-                                    : "Aucune carte ou bon actif pour ce client.")
+                                @(string.IsNullOrEmpty(_passage.ClientGuid) ? "Sélectionnez d'abord un client." : "Aucune carte ou bon actif.")
                             </div>
                         }
                         else
@@ -379,21 +472,20 @@
                             </select>
                             <div class="mt-2">
                                 <label class="form-label small fw-semibold">Montant à utiliser (€)</label>
-                                <input type="number" class="form-control form-control-sm"
-                                       @bind="_passage.MontantCarteUtilisee" step="0.01" min="0" />
+                                <input type="number" class="form-control form-control-sm" @bind="_passage.MontantCarteUtilisee" step="0.01" min="0" />
                                 @if (_selectedCarte != null)
                                 {
-                                    <small class="text-muted d-block mt-1">
-                                        <i class="bi bi-wallet2 me-1"></i>Solde : <strong>@_selectedCarte.SoldeRestant.ToString("N2") €</strong>
+                                    <div class="mt-1 p-2 bg-light rounded small">
+                                        <i class="bi bi-wallet2 me-1 text-info"></i>Solde disponible : <strong class="text-success">@_selectedCarte.SoldeRestant.ToString("N2") €</strong>
                                         @if (_passage.MontantCarteUtilisee > _selectedCarte.SoldeRestant)
                                         {
-                                            <span class="text-danger ms-1"><i class="bi bi-exclamation-triangle"></i> Dépasse le solde</span>
+                                            <br /><span class="text-danger"><i class="bi bi-exclamation-triangle me-1"></i>Montant supérieur au solde !</span>
                                         }
                                         @if (_selectedCarte.Type == "bon_fidelite")
                                         {
-                                            <span class="text-info d-block"><i class="bi bi-info-circle me-1"></i>Utilisable si prestations &gt; 60 €</span>
+                                            <br /><span class="text-info"><i class="bi bi-info-circle me-1"></i>Utilisable si prestations ≥ 60 €</span>
                                         }
-                                    </small>
+                                    </div>
                                 }
                             </div>
                         }
@@ -414,6 +506,13 @@
                     <span><i class="bi bi-bag me-1 text-gold"></i>Produits vendus</span>
                     <strong>@_passage.ProduitsVendus.Sum(p => p.Total).ToString("N2") €</strong>
                 </div>
+                @if (_produitsUtilises.Count > 0)
+                {
+                    <div class="d-flex justify-content-between mb-2 text-muted">
+                        <span><i class="bi bi-droplet me-1"></i>Produits utilisés</span>
+                        <span>@_produitsUtilises.Count produit(s)</span>
+                    </div>
+                }
                 <hr />
                 <div class="d-flex justify-content-between mb-3">
                     <span class="fs-5 fw-bold">Total</span>
@@ -438,7 +537,8 @@
     private List<Prestation> _prestationsCatalogue = [];
     private List<Produit> _produitsCatalogue = [];
     private List<CarteCadeau> _cartesClient = [];
-    private bool _isEdit, _saving, _showClientDropdown, _conflitDetecte;
+    private List<ProduitUtiliseItem> _produitsUtilises = [];
+    private bool _isEdit, _saving, _showClientDropdown, _conflitDetecte, _triedSave;
     private string _alert = "", _alertType = "info";
     private string _clientSearchText = "";
     private CarteCadeau? _fideliteCarte;
@@ -446,6 +546,14 @@
     private decimal _totalPassage => _passage.Prestations.Sum(p => p.Prix) + _passage.ProduitsVendus.Sum(p => p.Total);
     private decimal _totalPaiements => _passage.Paiements.Sum(p => p.Montant);
     private CarteCadeau? _selectedCarte => _cartesClient.FirstOrDefault(c => c.Guid == _passage.CarteCadeauGuid);
+
+    // Classe interne pour les produits utilisés (non facturés)
+    private class ProduitUtiliseItem
+    {
+        public string ProduitId { get; set; } = "";
+        public string Nom { get; set; } = "";
+        public int Quantite { get; set; } = 1;
+    }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -489,7 +597,7 @@
             var t = Client.SupprimerAccents(_clientSearchText.ToLower());
             _clientsFiltered = _clients
                 .Where(c => Client.SupprimerAccents(c.NomComplet).Contains(t, StringComparison.OrdinalIgnoreCase)
-                    || c.NumeroTelephone.Contains(t, StringComparison.OrdinalIgnoreCase)
+                    || c.NumeroTelephone.Replace(" ", "").Contains(t.Replace(" ", ""), StringComparison.OrdinalIgnoreCase)
                     || Client.SupprimerAccents(c.Email).Contains(t, StringComparison.OrdinalIgnoreCase))
                 .Take(20)
                 .ToList();
@@ -505,43 +613,30 @@
         StateHasChanged();
     }
 
-    private void ClearClient()
-    {
-        _passage.ClientGuid = "";
-        _clientSearchText = "";
-        _cartesClient = [];
-    }
+    private void ClearClient() { _passage.ClientGuid = ""; _clientSearchText = ""; _cartesClient = []; }
 
     private async Task LoadCartesClient()
     {
         if (!string.IsNullOrEmpty(_passage.ClientGuid))
         {
-            // Générer le bon anniversaire s'il n'existe pas encore (disponible immédiatement)
             await FideliteSvc.VerifierBonAnniversaireAsync(_passage.ClientGuid);
-
-            // Charger toutes les cartes/bons utilisables
             var cartes = await CarteSvc.GetByClientAsync(_passage.ClientGuid);
             _cartesClient = cartes.Where(c => c.EstUtilisable).ToList();
         }
-        else
-        {
-            _cartesClient = [];
-        }
+        else { _cartesClient = []; }
     }
 
     private void AddPrestation() => _passage.Prestations.Add(new PassagePrestation());
     private void AddProduitVendu() => _passage.ProduitsVendus.Add(new PassageProduitVendu { Quantite = 1 });
     private void AddProduitConseille() => _passage.ProduitsConseilles.Add(new PassageProduitConseille());
+    private void AddProduitUtilise() => _produitsUtilises.Add(new ProduitUtiliseItem());
 
     private void AddPaiement()
     {
         if (_passage.Paiements.Count == 0 && !string.IsNullOrEmpty(_passage.ModePaiement))
         {
-            // Migrer le mode simple vers multi-paiement
             _passage.Paiements.Add(new PaiementDetail { Mode = _passage.ModePaiement, Montant = _totalPassage });
-            _passage.ModePaiement = "";
-            _passage.CarteCadeauGuid = "";
-            _passage.MontantCarteUtilisee = 0;
+            _passage.ModePaiement = ""; _passage.CarteCadeauGuid = ""; _passage.MontantCarteUtilisee = 0;
         }
         else
         {
@@ -552,11 +647,8 @@
 
     private void RemovePaiement(int idx)
     {
-        if (idx >= 0 && idx < _passage.Paiements.Count)
-            _passage.Paiements.RemoveAt(idx);
-        // Si plus aucun paiement fractionné, revenir au mode simple
-        if (_passage.Paiements.Count == 0)
-            _passage.ModePaiement = "";
+        if (idx >= 0 && idx < _passage.Paiements.Count) _passage.Paiements.RemoveAt(idx);
+        if (_passage.Paiements.Count == 0) _passage.ModePaiement = "";
     }
 
     private void OnPaiementModeChanged(int idx, ChangeEventArgs e)
@@ -565,32 +657,24 @@
         if (idx < _passage.Paiements.Count)
         {
             _passage.Paiements[idx].Mode = mode;
-            // Réinitialiser le GUID carte si on change de mode
-            if (mode != "Carte cadeau")
-                _passage.Paiements[idx].CarteCadeauGuid = "";
+            if (mode != "Carte cadeau") _passage.Paiements[idx].CarteCadeauGuid = "";
         }
     }
 
-    /// <summary>Formatte le label d'une carte/bon pour les listes déroulantes.</summary>
     private static string FormatCarteLabel(CarteCadeau cc)
     {
         var icon = cc.Type switch { "fidelite" => "Fidélité", "bon_fidelite" => "Bon Anniv.", _ => "Carte cadeau" };
-        var detail = string.IsNullOrEmpty(cc.Origine) ? "" : $" — {cc.Origine}";
-        return $"{icon} : {cc.SoldeRestant:N2}€{detail}";
+        return $"{icon} : {cc.SoldeRestant:N2}€ restant — {(string.IsNullOrEmpty(cc.Origine) ? "Sans description" : cc.Origine)}";
     }
 
-    /// <summary>Retourne la carte cadeau sélectionnée pour un GUID donné.</summary>
     private CarteCadeau? GetSelectedPayCarte(string? carteGuid)
         => string.IsNullOrEmpty(carteGuid) ? null : _cartesClient.FirstOrDefault(c => c.Guid == carteGuid);
 
-    /// <summary>Retourne les cartes cadeaux disponibles pour un slot de paiement donné (excluant celles déjà sélectionnées par d'autres slots).</summary>
     private List<CarteCadeau> GetCartesDisponiblesPour(int slotIdx)
     {
         var cartesUtilisees = _passage.Paiements
             .Where((p, i) => i != slotIdx && p.Mode == "Carte cadeau" && !string.IsNullOrEmpty(p.CarteCadeauGuid))
-            .Select(p => p.CarteCadeauGuid)
-            .ToHashSet();
-
+            .Select(p => p.CarteCadeauGuid).ToHashSet();
         return _cartesClient.Where(c => !cartesUtilisees.Contains(c.Guid) || c.Guid == (_passage.Paiements.ElementAtOrDefault(slotIdx)?.CarteCadeauGuid ?? "")).ToList();
     }
 
@@ -619,27 +703,29 @@
         }
     }
 
+    private void OnProduitUtiliseSelected(int idx, ChangeEventArgs e)
+    {
+        var guid = e.Value?.ToString() ?? "";
+        var prod = _produitsCatalogue.FirstOrDefault(p => p.Guid == guid);
+        if (prod != null && idx < _produitsUtilises.Count)
+        {
+            _produitsUtilises[idx].ProduitId = prod.Guid;
+            _produitsUtilises[idx].Nom = prod.Nom;
+        }
+    }
+
     private void OnProduitConseilleSelected(int idx, ChangeEventArgs e)
     {
         var guid = e.Value?.ToString() ?? "";
         if (string.IsNullOrEmpty(guid))
         {
-            // Texte libre
-            if (idx < _passage.ProduitsConseilles.Count)
-            {
-                _passage.ProduitsConseilles[idx].ProduitId = "";
-                _passage.ProduitsConseilles[idx].Nom = "";
-            }
+            if (idx < _passage.ProduitsConseilles.Count) { _passage.ProduitsConseilles[idx].ProduitId = ""; _passage.ProduitsConseilles[idx].Nom = ""; }
         }
         else
         {
             var prod = _produitsCatalogue.FirstOrDefault(p => p.Guid == guid);
             if (prod != null && idx < _passage.ProduitsConseilles.Count)
-            {
-                _passage.ProduitsConseilles[idx].ProduitId = prod.Guid;
-                _passage.ProduitsConseilles[idx].Nom = prod.Nom;
-                _passage.ProduitsConseilles[idx].PrixIndicatif = prod.PrixVente;
-            }
+            { _passage.ProduitsConseilles[idx].ProduitId = prod.Guid; _passage.ProduitsConseilles[idx].Nom = prod.Nom; _passage.ProduitsConseilles[idx].PrixIndicatif = prod.PrixVente; }
         }
     }
 
@@ -648,24 +734,110 @@
 
     private async Task DoSaveAsync(bool forceWrite)
     {
-        if (string.IsNullOrEmpty(_passage.ClientGuid)) { _alert = "Sélectionnez un client."; _alertType = "warning"; return; }
-        if (string.IsNullOrEmpty(_passage.Date)) { _alert = "La date est requise."; _alertType = "warning"; return; }
-        if (_passage.Prestations.Count == 0 && _passage.ProduitsVendus.Count == 0) 
-        { _alert = "Ajoutez au moins une prestation ou un produit."; _alertType = "warning"; return; }
+        _triedSave = true; _alert = ""; StateHasChanged();
 
-        // Vérifier les paiements multi-moyens
+        // ── Validations complètes ──
+        var errors = new List<string>();
+
+        if (string.IsNullOrEmpty(_passage.ClientGuid))
+            errors.Add("Sélectionnez un client dans la liste.");
+
+        if (string.IsNullOrEmpty(_passage.Date))
+            errors.Add("La date est requise.");
+        else if (!DateTime.TryParseExact(_passage.Date, new[] { "dd/MM/yyyy" },
+            System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out _))
+            errors.Add("Format de date invalide (attendu : JJ/MM/AAAA).");
+
+        if (_passage.Prestations.Count == 0 && _passage.ProduitsVendus.Count == 0)
+            errors.Add("Ajoutez au moins une prestation ou un produit vendu.");
+
+        // Vérifier que les prestations sont bien sélectionnées
+        foreach (var pp in _passage.Prestations)
+        {
+            if (string.IsNullOrEmpty(pp.PrestationId))
+                errors.Add("Chaque prestation doit être sélectionnée dans le catalogue.");
+            if (pp.Prix < 0) errors.Add($"Le prix de « {pp.Nom} » ne peut pas être négatif.");
+        }
+
+        // Vérifier stock des produits vendus
+        foreach (var pv in _passage.ProduitsVendus)
+        {
+            if (string.IsNullOrEmpty(pv.ProduitId)) { errors.Add("Chaque produit vendu doit être sélectionné."); continue; }
+            if (pv.Quantite <= 0) { errors.Add($"La quantité de « {pv.Nom} » doit être supérieure à 0."); continue; }
+            var stock = _produitsCatalogue.FirstOrDefault(p => p.Guid == pv.ProduitId);
+            if (stock != null && pv.Quantite > stock.Stock)
+                errors.Add($"Stock insuffisant pour « {pv.Nom} » ({stock.Stock} disponible(s), {pv.Quantite} demandé(s)).");
+        }
+
+        // Vérifier stock des produits utilisés
+        foreach (var pu in _produitsUtilises)
+        {
+            if (string.IsNullOrEmpty(pu.ProduitId)) continue;
+            if (pu.Quantite <= 0) { errors.Add($"La quantité de « {pu.Nom} » (produit utilisé) doit être > 0."); continue; }
+            var stock = _produitsCatalogue.FirstOrDefault(p => p.Guid == pu.ProduitId);
+            if (stock != null && pu.Quantite > stock.Stock)
+                errors.Add($"Stock insuffisant pour « {pu.Nom} » (utilisé) ({stock.Stock} dispo, {pu.Quantite} demandé).");
+        }
+
+        // Vérifier le paiement
         if (_passage.Paiements.Count > 0)
         {
             var diff = Math.Abs(_totalPaiements - _totalPassage);
             if (diff > 0.01m)
+                errors.Add($"Le total des paiements ({_totalPaiements:N2}€) ne correspond pas au total ({_totalPassage:N2}€).");
+
+            foreach (var pay in _passage.Paiements)
             {
-                _alert = $"Le total des paiements ({_totalPaiements:N2}€) ne correspond pas au total du passage ({_totalPassage:N2}€).";
-                _alertType = "warning";
-                return;
+                if (pay.Montant <= 0) errors.Add("Chaque paiement doit avoir un montant > 0.");
+                if (pay.Mode == "Carte cadeau")
+                {
+                    if (string.IsNullOrEmpty(pay.CarteCadeauGuid))
+                        errors.Add("Sélectionnez une carte/bon pour chaque paiement par carte.");
+                    else
+                    {
+                        var carte = _cartesClient.FirstOrDefault(c => c.Guid == pay.CarteCadeauGuid);
+                        if (carte != null && pay.Montant > carte.SoldeRestant)
+                            errors.Add($"Le montant ({pay.Montant:N2}€) dépasse le solde de la carte ({carte.SoldeRestant:N2}€).");
+                    }
+                }
             }
-            // Mettre à jour le mode de paiement principal pour la rétrocompatibilité
-            _passage.ModePaiement = string.Join(" + ", _passage.Paiements.Select(p => p.Mode).Distinct());
         }
+        else
+        {
+            if (string.IsNullOrEmpty(_passage.ModePaiement))
+                errors.Add("Sélectionnez un mode de paiement.");
+            if (_passage.ModePaiement == "Carte cadeau")
+            {
+                if (string.IsNullOrEmpty(_passage.CarteCadeauGuid))
+                    errors.Add("Sélectionnez une carte/bon à utiliser.");
+                else if (_selectedCarte != null && _passage.MontantCarteUtilisee > _selectedCarte.SoldeRestant)
+                    errors.Add($"Le montant ({_passage.MontantCarteUtilisee:N2}€) dépasse le solde ({_selectedCarte.SoldeRestant:N2}€).");
+                if (_passage.MontantCarteUtilisee <= 0)
+                    errors.Add("Indiquez le montant à utiliser sur la carte.");
+            }
+        }
+
+        // Vérifier bon anniversaire (>= 60€ de prestations)
+        var totalPrestations = _passage.Prestations.Sum(p => p.Prix);
+        var cartesPaiementBonAnniv = _passage.Paiements.Count > 0
+            ? _passage.Paiements.Where(p => p.Mode == "Carte cadeau" && !string.IsNullOrEmpty(p.CarteCadeauGuid))
+                .Select(p => _cartesClient.FirstOrDefault(c => c.Guid == p.CarteCadeauGuid))
+                .Where(c => c?.Type == "bon_fidelite")
+            : (_selectedCarte?.Type == "bon_fidelite" ? new[] { _selectedCarte } : Array.Empty<CarteCadeau?>());
+
+        if (cartesPaiementBonAnniv.Any() && totalPrestations < 60m)
+            errors.Add("Le bon anniversaire n'est utilisable que si le total des prestations est ≥ 60 €.");
+
+        if (errors.Count > 0)
+        {
+            _alert = string.Join("\n• ", errors.Prepend("Veuillez corriger les erreurs suivantes :"));
+            _alertType = "warning";
+            return;
+        }
+
+        // ── Sauvegarde ──
+        if (_passage.Paiements.Count > 0)
+            _passage.ModePaiement = string.Join(" + ", _passage.Paiements.Select(p => p.Mode).Distinct());
 
         _saving = true; _conflitDetecte = false; StateHasChanged();
         try
@@ -682,49 +854,46 @@
                 await PassageSvc.AddAsync(_passage);
             }
 
-            // Enregistrer les mouvements de stock pour les produits vendus
+            // Mouvements de stock — produits vendus
             foreach (var pv in _passage.ProduitsVendus)
             {
                 if (!string.IsNullOrEmpty(pv.ProduitId))
                     await MouvementSvc.EnregistrerSortieAsync(pv.ProduitId, pv.Quantite, pv.PrixUnitaire, _passage.Guid);
             }
 
+            // Mouvements de stock — produits utilisés (non facturés)
+            foreach (var pu in _produitsUtilises)
+            {
+                if (!string.IsNullOrEmpty(pu.ProduitId) && pu.Quantite > 0)
+                    await MouvementSvc.EnregistrerSortieAsync(pu.ProduitId, pu.Quantite, 0, _passage.Guid);
+            }
+
             // Utiliser les cartes cadeaux / bons fidélité
-            var totalPrestationsPassage = _passage.Prestations.Sum(p => p.Prix);
             if (_passage.Paiements.Count > 0)
             {
                 foreach (var pay in _passage.Paiements.Where(p => p.Mode == "Carte cadeau" && !string.IsNullOrEmpty(p.CarteCadeauGuid)))
-                {
-                    // Vérifier si c'est un bon anniversaire → prestations cabine > 60€ requises
-                    var cartePay = _cartesClient.FirstOrDefault(c => c.Guid == pay.CarteCadeauGuid);
-                    if (cartePay?.Type == "bon_fidelite" && totalPrestationsPassage <= 60m)
-                    {
-                        _alert = "Le bon anniversaire est utilisable uniquement sur un passage avec plus de 60 € de prestations cabine.";
-                        _alertType = "warning"; _saving = false; StateHasChanged(); return;
-                    }
                     await CarteSvc.UtiliserAsync(pay.CarteCadeauGuid, pay.Montant);
-                }
             }
             else if (!string.IsNullOrEmpty(_passage.CarteCadeauGuid) && _passage.MontantCarteUtilisee > 0)
             {
-                var cartePay = _cartesClient.FirstOrDefault(c => c.Guid == _passage.CarteCadeauGuid);
-                if (cartePay?.Type == "bon_fidelite" && totalPrestationsPassage <= 60m)
-                {
-                    _alert = "Le bon anniversaire est utilisable uniquement sur un passage avec plus de 60 € de prestations cabine.";
-                    _alertType = "warning"; _saving = false; StateHasChanged(); return;
-                }
                 await CarteSvc.UtiliserAsync(_passage.CarteCadeauGuid, _passage.MontantCarteUtilisee);
             }
 
             // Vérifier fidélité (10 passages → carte fidélité automatique)
             _fideliteCarte = await FideliteSvc.VerifierEtGenererAsync(_passage.ClientGuid);
 
-            if (_fideliteCarte == null)
-                Nav.NavigateTo("passages");
-            else
+            if (_fideliteCarte != null)
+            {
+                Toast.ShowSuccess($"Carte fidélité générée : {_fideliteCarte.MontantInitial:N2} € !");
                 StateHasChanged();
+            }
+            else
+            {
+                Toast.ShowSuccess("Passage enregistré avec succès.");
+                Nav.NavigateTo("passages");
+            }
         }
-        catch (Exception ex) { _alert = $"Erreur: {ex.Message}"; _alertType = "danger"; }
+        catch (Exception ex) { Toast.ShowError(ex.Message); }
         finally { _saving = false; StateHasChanged(); }
     }
 

@@ -1,0 +1,99 @@
+@* Conteneur de toasts Bootstrap - affiché en position fixe en haut à droite *@
+@inject ToastService ToastSvc
+@implements IDisposable
+
+<div class="toast-container position-fixed top-0 end-0 p-3" style="z-index: 1080;">
+    @foreach (var toast in ToastSvc.Toasts)
+    {
+        <div class="toast show border-0 shadow-lg @GetToastClass(toast.Type)" role="alert" aria-live="assertive" aria-atomic="true">
+            <div class="toast-header @GetHeaderClass(toast.Type)">
+                <i class="bi @GetIcon(toast.Type) me-2"></i>
+                <strong class="me-auto">@toast.Title</strong>
+                <small class="text-white-50">à l'instant</small>
+                <button type="button" class="btn-close btn-close-white ms-2" @onclick="() => Dismiss(toast.Id)"></button>
+            </div>
+            <div class="toast-body">
+                @toast.Message
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private readonly Dictionary<string, Timer> _timers = new();
+
+    protected override void OnInitialized()
+    {
+        ToastSvc.OnChange += HandleChange;
+    }
+
+    private void HandleChange()
+    {
+        InvokeAsync(() =>
+        {
+            // Démarrer les timers pour les nouveaux toasts
+            foreach (var toast in ToastSvc.Toasts)
+            {
+                if (!_timers.ContainsKey(toast.Id))
+                {
+                    var id = toast.Id;
+                    var timer = new Timer(_ =>
+                    {
+                        InvokeAsync(() =>
+                        {
+                            Dismiss(id);
+                            StateHasChanged();
+                        });
+                    }, null, toast.DurationMs, Timeout.Infinite);
+                    _timers[toast.Id] = timer;
+                }
+            }
+            StateHasChanged();
+        });
+    }
+
+    private void Dismiss(string id)
+    {
+        if (_timers.TryGetValue(id, out var timer))
+        {
+            timer.Dispose();
+            _timers.Remove(id);
+        }
+        ToastSvc.Remove(id);
+    }
+
+    private static string GetToastClass(ToastType type) => type switch
+    {
+        ToastType.Success => "text-bg-success",
+        ToastType.Error => "text-bg-danger",
+        ToastType.Warning => "text-bg-warning",
+        ToastType.Info => "text-bg-info",
+        _ => "text-bg-secondary"
+    };
+
+    private static string GetHeaderClass(ToastType type) => type switch
+    {
+        ToastType.Success => "bg-success text-white",
+        ToastType.Error => "bg-danger text-white",
+        ToastType.Warning => "bg-warning text-dark",
+        ToastType.Info => "bg-info text-white",
+        _ => "bg-secondary text-white"
+    };
+
+    private static string GetIcon(ToastType type) => type switch
+    {
+        ToastType.Success => "bi-check-circle-fill",
+        ToastType.Error => "bi-exclamation-triangle-fill",
+        ToastType.Warning => "bi-exclamation-circle-fill",
+        ToastType.Info => "bi-info-circle-fill",
+        _ => "bi-bell-fill"
+    };
+
+    public void Dispose()
+    {
+        ToastSvc.OnChange -= HandleChange;
+        foreach (var timer in _timers.Values)
+            timer.Dispose();
+        _timers.Clear();
+    }
+}

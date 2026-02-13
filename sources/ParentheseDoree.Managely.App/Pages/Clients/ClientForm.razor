@@ -2,6 +2,7 @@
 @page "/clients/{Guid}/modifier"
 @inject ClientService ClientSvc
 @inject GoogleAuthService AuthService
+@inject ToastService Toast
 @inject NavigationManager Nav
 @inject IJSRuntime JSRuntime
 
@@ -158,7 +159,7 @@
             }
             Nav.NavigateTo("clients");
         }
-        catch (Exception ex) { _alert = $"Erreur: {ex.Message}"; _alertType = "danger"; }
+        catch (Exception ex) { Toast.ShowError(ex.Message); }
         finally { _saving = false; StateHasChanged(); }
     }
 

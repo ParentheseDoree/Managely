@@ -4,6 +4,7 @@
 @inject CarteCadeauService CarteSvc
 @inject FideliteService FideliteSvc
 @inject GoogleAuthService AuthService
+@inject ToastService Toast
 @inject NavigationManager Nav
 @inject IJSRuntime JSRuntime
 
@@ -30,6 +31,12 @@ else
                 <button class="btn btn-gold" @onclick='() => Nav.NavigateTo($"clients/{Guid}/modifier")'>
                     <i class="bi bi-pencil me-1"></i> Modifier
                 </button>
+                <button class="btn btn-outline-success" @onclick='() => Nav.NavigateTo($"passages/nouveau")'>
+                    <i class="bi bi-plus-circle me-1"></i> Nouveau passage
+                </button>
+                <button class="btn btn-outline-info" @onclick='() => Nav.NavigateTo("cartes-cadeaux")'>
+                    <i class="bi bi-gift me-1"></i> Carte cadeau
+                </button>
             }
             <button class="btn btn-outline-secondary" @onclick="GoBack">
                 <i class="bi bi-arrow-left me-1"></i> Retour
@@ -45,7 +52,15 @@ else
                     <h5 class="card-title mb-3"><i class="bi bi-person-vcard me-2 text-gold"></i>Informations</h5>
                     <dl class="mb-0">
                         <dt class="small text-muted">Téléphone</dt>
-                        <dd>@(string.IsNullOrEmpty(_client.NumeroTelephone) ? "—" : _client.NumeroTelephone)</dd>
+                        <dd>
+                            @if (!string.IsNullOrEmpty(_client.NumeroTelephone))
+                            {
+                                <a href="tel:@_client.NumeroTelephone.Replace(" ", "")" class="text-decoration-none">
+                                    <i class="bi bi-telephone me-1"></i>@_client.NumeroTelephone
+                                </a>
+                            }
+                            else { <span>—</span> }
+                        </dd>
                         <dt class="small text-muted">Email</dt>
                         <dd>@(string.IsNullOrEmpty(_client.Email) ? "—" : _client.Email)</dd>
                         <dt class="small text-muted">Adresse</dt>
@@ -53,7 +68,12 @@ else
                         <dt class="small text-muted">Anniversaire</dt>
                         <dd>@(string.IsNullOrEmpty(_client.MoisAnniversaire) ? "—" : _client.MoisAnniversaire)</dd>
                         <dt class="small text-muted">Client depuis</dt>
-                        <dd>@_client.DateCreation</dd>
+                        <dd>@FormatDate(_client.DateCreation)</dd>
+                        @if (!string.IsNullOrEmpty(_client.DateModification))
+                        {
+                            <dt class="small text-muted">Dernière modification</dt>
+                            <dd>@FormatDate(_client.DateModification)</dd>
+                        }
                     </dl>
                 </div>
             </div>
@@ -62,24 +82,21 @@ else
         @* Statistiques *@
         <div class="col-lg-8">
             <div class="row g-3 mb-4">
-                <div class="col-6 col-sm-4">
+                <div class="col-6">
                     <StatCard Value="@_nbPassages.ToString()" Label="Passages" Icon="bi-calendar-check" Color="primary" />
                 </div>
-                <div class="col-6 col-sm-4">
-                    <StatCard Value="@($"{_totalDepense:N0} €")" Label="Total dépensé" Icon="bi-currency-euro" Color="success" />
-                </div>
-                <div class="col-6 col-sm-4">
+                <div class="col-6">
                     <StatCard Value="@($"{_passagesAvant} restant(s)")" Label="Prochain palier fidélité"
                               Icon="bi-heart" Color="warning" />
                 </div>
             </div>
 
-            @* Cartes cadeaux *@
+            @* Cartes et bons *@
             @if (_cartes.Count > 0)
             {
                 <div class="card border-0 shadow-sm mb-4">
                     <div class="card-header pt-3">
-                        <h6 class="mb-0"><i class="bi bi-gift me-2 text-gold"></i>Cartes cadeaux (@_cartes.Count)</h6>
+                        <h6 class="mb-0"><i class="bi bi-gift me-2 text-gold"></i>Cartes & Bons (@_cartes.Count)</h6>
                     </div>
                     <div class="card-body p-0">
                         <div class="table-responsive">
@@ -89,7 +106,11 @@ else
                                     @foreach (var c in _cartes)
                                     {
                                         <tr>
-                                            <td><span class="badge @(c.Type == "fidelite" ? "bg-warning text-dark" : "bg-info")">@c.Type</span></td>
+                                            <td>
+                                                <span class="badge @GetTypeBadgeClass(c.Type)">
+                                                    @GetTypeLabel(c.Type)
+                                                </span>
+                                            </td>
                                             <td>@c.MontantInitial.ToString("N2") €</td>
                                             <td><strong>@c.SoldeRestant.ToString("N2") €</strong></td>
                                             <td>
@@ -120,7 +141,7 @@ else
         }
         else
         {
-            @* Vue mobile : cards *@
+            @* Vue mobile *@
             <div class="card-body d-md-none">
                 @foreach (var p in _passages)
                 {
@@ -130,25 +151,21 @@ else
                             <span class="text-gold fw-bold">@p.Total.ToString("N2") €</span>
                         </div>
                         <div class="small text-muted">@p.ResumePrestations</div>
-                        <div class="small">
-                            <span class="badge bg-light text-dark">@(string.IsNullOrEmpty(p.ModePaiement) ? "—" : p.ModePaiement)</span>
-                        </div>
                     </div>
                 }
             </div>
-            @* Vue desktop : table *@
+            @* Vue desktop *@
             <div class="table-responsive d-none d-md-block">
                 <table class="table table-hover mb-0">
-                    <thead><tr><th>Date</th><th>Prestations</th><th>Total</th><th>Paiement</th><th>Notes</th></tr></thead>
+                    <thead><tr><th>Date</th><th>Prestations</th><th class="text-end">Total</th><th>Paiement</th></tr></thead>
                     <tbody>
                         @foreach (var p in _passages)
                         {
                             <tr class="cursor-pointer" @onclick='() => Nav.NavigateTo($"passages/{p.Guid}")'>
                                 <td>@p.Date</td>
                                 <td>@p.ResumePrestations</td>
-                                <td><strong>@p.Total.ToString("N2") €</strong></td>
+                                <td class="text-end"><strong>@p.Total.ToString("N2") €</strong></td>
                                 <td>@(string.IsNullOrEmpty(p.ModePaiement) ? "—" : p.ModePaiement)</td>
-                                <td class="text-truncate" style="max-width:200px;">@p.NoteInterne</td>
                             </tr>
                         }
                     </tbody>
@@ -162,9 +179,8 @@ else
     {
         <div class="card border-0 shadow-sm mt-4">
             <div class="card-header pt-3">
-                <h5 class="mb-0"><i class="bi bi-bag-check me-2 text-gold"></i>Historique des produits achetés (@_produitsAchetes.Count)</h5>
+                <h5 class="mb-0"><i class="bi bi-bag-check me-2 text-gold"></i>Produits achetés (@_produitsAchetes.Count)</h5>
             </div>
-            @* Vue mobile : cards *@
             <div class="card-body d-md-none">
                 @foreach (var pa in _produitsAchetes)
                 {
@@ -173,28 +189,13 @@ else
                             <strong>@pa.Nom</strong>
                             <span class="text-gold fw-bold">@pa.Total.ToString("N2") €</span>
                         </div>
-                        <div class="small text-muted">
-                            @pa.Date — @pa.Quantite x @pa.PrixUnitaire.ToString("N2") €
-                        </div>
-                        <a href="passages/@pa.PassageGuid" class="small text-decoration-none">
-                            <i class="bi bi-box-arrow-up-right me-1"></i>Voir le passage
-                        </a>
+                        <div class="small text-muted">@pa.Date — @pa.Quantite x @pa.PrixUnitaire.ToString("N2") €</div>
                     </div>
                 }
             </div>
-            @* Vue desktop : table *@
             <div class="table-responsive d-none d-md-block">
                 <table class="table table-hover mb-0">
-                    <thead>
-                        <tr>
-                            <th>Date</th>
-                            <th>Produit</th>
-                            <th class="text-center">Quantité</th>
-                            <th class="text-end">Prix unit.</th>
-                            <th class="text-end">Total</th>
-                            <th>Passage</th>
-                        </tr>
-                    </thead>
+                    <thead><tr><th>Date</th><th>Produit</th><th class="text-center">Qté</th><th class="text-end">Prix unit.</th><th class="text-end">Total</th></tr></thead>
                     <tbody>
                         @foreach (var pa in _produitsAchetes)
                         {
@@ -204,11 +205,6 @@ else
                                 <td class="text-center">@pa.Quantite</td>
                                 <td class="text-end">@pa.PrixUnitaire.ToString("N2") €</td>
                                 <td class="text-end fw-bold">@pa.Total.ToString("N2") €</td>
-                                <td>
-                                    <a href="passages/@pa.PassageGuid" class="btn btn-sm btn-outline-primary">
-                                        <i class="bi bi-eye"></i>
-                                    </a>
-                                </td>
                             </tr>
                         }
                     </tbody>
@@ -227,10 +223,33 @@ else
     private List<ProduitAcheteDetail> _produitsAchetes = [];
     private bool _loading = true;
     private int _nbPassages;
-    private decimal _totalDepense;
     private int _passagesAvant;
 
     private async Task GoBack() => await JSRuntime.InvokeVoidAsync("navigateBack");
+
+    private static string FormatDate(string dateStr)
+    {
+        if (string.IsNullOrEmpty(dateStr)) return "—";
+        if (DateTime.TryParse(dateStr, out var d))
+            return d.ToString("dd/MM/yyyy à HH:mm");
+        return dateStr;
+    }
+
+    private static string GetTypeBadgeClass(string type) => type switch
+    {
+        "fidelite" => "bg-warning text-dark",
+        "bon_fidelite" => "bg-info",
+        "achat" => "bg-primary",
+        _ => "bg-secondary"
+    };
+
+    private static string GetTypeLabel(string type) => type switch
+    {
+        "fidelite" => "Fidélité",
+        "bon_fidelite" => "Bon anniversaire",
+        "achat" => "Carte cadeau",
+        _ => type
+    };
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -248,9 +267,7 @@ else
                 var (nb, avant, _) = await FideliteSvc.GetStatutAsync(Guid);
                 _nbPassages = nb;
                 _passagesAvant = avant;
-                _totalDepense = _passages.Sum(p => p.Total);
 
-                // Construire l'historique des produits achetés
                 _produitsAchetes = _passages
                     .SelectMany(p => p.ProduitsVendus.Select(pv => new ProduitAcheteDetail
                     {

@@ -2,6 +2,7 @@
 @inject CarteCadeauService CarteSvc
 @inject ClientService ClientSvc
 @inject GoogleAuthService AuthService
+@inject ToastService Toast
 @inject NavigationManager Nav
 
 <PageTitle>Cartes & Bons - Managely</PageTitle>
@@ -213,12 +214,12 @@ else
                                 }
                             </div>
                         </div>
-                        <div class="col-md-6">
-                            <label class="form-label fw-semibold">Type de carte</label>
-                            <select class="form-select" @bind="_editing.Type">
-                                <option value="achat">🎁 Carte cadeau (vendue)</option>
-                                <option value="fidelite">🎖️ Carte fidélité (offerte)</option>
-                            </select>
+                        <div class="col-12">
+                            <div class="alert alert-info small mb-0">
+                                <i class="bi bi-info-circle me-1"></i>
+                                Seules les cartes cadeaux peuvent être créées manuellement.
+                                Les bons anniversaire et cartes fidélité sont générés automatiquement.
+                            </div>
                         </div>
                         <div class="col-md-6">
                             <label class="form-label fw-semibold">Montant (€) <span class="text-danger">*</span></label>
@@ -316,6 +317,7 @@ else
     }
 
     private string GetClientNom(string guid) => _clientNoms.TryGetValue(guid, out var n) ? n : "—";
+    private string GetClientTel(string guid) => _clients.FirstOrDefault(c => c.Guid == guid)?.NumeroTelephone ?? "";
     private void OnSearch(string val) { _search = val; Filter(); StateHasChanged(); }
 
     private void Filter()
@@ -330,7 +332,8 @@ else
         {
             var t = Client.SupprimerAccents(_search.ToLower());
             q = q.Where(c => Client.SupprimerAccents(GetClientNom(c.ClientGuid)).Contains(t, StringComparison.OrdinalIgnoreCase)
-                           || Client.SupprimerAccents(c.Origine).Contains(t, StringComparison.OrdinalIgnoreCase));
+                           || Client.SupprimerAccents(c.Origine).Contains(t, StringComparison.OrdinalIgnoreCase)
+                           || GetClientTel(c.ClientGuid).Replace(" ", "").Contains(t.Replace(" ", ""), StringComparison.OrdinalIgnoreCase));
         }
         if (!string.IsNullOrEmpty(_filterType)) q = q.Where(c => c.Type == _filterType);
         if (!string.IsNullOrEmpty(_filterStatut)) q = q.Where(c => c.StatutCalcule == _filterStatut);
@@ -398,10 +401,10 @@ else
         try
         {
             await CarteSvc.AddAsync(_editing);
-            _alert = $"Carte de {_editing.MontantInitial:N2} € créée."; _alertType = "success";
+            Toast.ShowSuccess($"Carte de {_editing.MontantInitial:N2} € créée.");
             CloseModal(); await LoadAsync();
         }
-        catch (Exception ex) { _alert = ex.Message; _alertType = "danger"; }
+        catch (Exception ex) { Toast.ShowError(ex.Message); }
         finally { _saving = false; StateHasChanged(); }
     }
 
@@ -412,10 +415,10 @@ else
         try
         {
             await CarteSvc.DeleteAsync(_toDelete.RowIndex);
-            _alert = "Carte supprimée."; _alertType = "success";
+            Toast.ShowSuccess("Carte supprimée.");
             _showDelete = false; await LoadAsync();
         }
-        catch (Exception ex) { _alert = ex.Message; _alertType = "danger"; }
+        catch (Exception ex) { Toast.ShowError(ex.Message); }
         finally { _deleting = false; StateHasChanged(); }
     }
 }

@@ -1,22 +1,24 @@
 @page "/parametres"
 @inject GoogleAuthService AuthService
 @inject CacheService CacheSvc
+@inject ToastService Toast
 @inject NavigationManager Nav
 
-<PageTitle>Parametres - Managely</PageTitle>
+<PageTitle>Options - Managely</PageTitle>
 
 <div class="page-header">
     <div>
-        <h1><i class="bi bi-gear me-2"></i>Parametres</h1>
-        <p>Configuration de l'application</p>
+        <h1><i class="bi bi-gear me-2"></i>Options supplémentaires & Informations</h1>
+        <p>Configuration et informations sur l'application</p>
     </div>
 </div>
 
 <div class="row g-4">
+    @* Compte connecté *@
     <div class="col-lg-6">
-        <div class="card border-0 shadow-sm">
+        <div class="card border-0 shadow-sm h-100">
             <div class="card-header pt-3">
-                <h5 class="mb-0"><i class="bi bi-person-circle me-2 text-gold"></i>Compte connecte</h5>
+                <h5 class="mb-0"><i class="bi bi-person-circle me-2 text-gold"></i>Compte connecté</h5>
             </div>
             <div class="card-body">
                 @if (AuthService.CurrentUser != null)
@@ -34,12 +36,11 @@
                             <p class="text-muted mb-0">@AuthService.CurrentUser.Email</p>
                         </div>
                     </div>
-
                     <dl class="mb-0">
                         <dt class="small text-muted">Permission</dt>
                         <dd>
                             <span class="badge @(AuthService.CanWrite ? "bg-success" : "bg-warning text-dark")">
-                                @(AuthService.CanWrite ? "Lecture / Ecriture" : "Lecture seule")
+                                @(AuthService.CanWrite ? "Lecture / Écriture" : "Lecture seule")
                             </span>
                         </dd>
                     </dl>
@@ -48,63 +49,104 @@
         </div>
     </div>
 
+    @* Cache et session *@
     <div class="col-lg-6">
-        <div class="card border-0 shadow-sm">
+        <div class="card border-0 shadow-sm h-100">
             <div class="card-header pt-3">
-                <h5 class="mb-0"><i class="bi bi-database me-2 text-gold"></i>Cache</h5>
+                <h5 class="mb-0"><i class="bi bi-database me-2 text-gold"></i>Cache & Session</h5>
             </div>
             <div class="card-body">
-                <p class="text-muted">
-                    Les donnees sont mises en cache localement pour accelerer la navigation.
-                    Si vous constatez des donnees obsoletes, videz le cache.
+                <p class="text-muted small">
+                    Les données sont mises en cache localement pour accélérer la navigation.
+                    Si vous constatez des données obsolètes, videz le cache.
                 </p>
-                <button class="btn btn-outline-warning" @onclick="ClearCache">
-                    <i class="bi bi-trash me-1"></i> Vider le cache
-                </button>
-                @if (_cacheCleared)
-                {
-                    <span class="text-success ms-2"><i class="bi bi-check-circle"></i> Cache vide !</span>
-                }
+                <div class="d-flex gap-2 flex-wrap">
+                    <button class="btn btn-outline-warning" @onclick="ClearCache">
+                        <i class="bi bi-trash me-1"></i> Vider le cache
+                    </button>
+                    <button class="btn btn-outline-danger" @onclick="SignOutAsync">
+                        <i class="bi bi-box-arrow-right me-1"></i> Déconnexion
+                    </button>
+                </div>
             </div>
         </div>
     </div>
 
+    @* À propos *@
     <div class="col-lg-6">
-        <div class="card border-0 shadow-sm">
+        <div class="card border-0 shadow-sm h-100">
             <div class="card-header pt-3">
-                <h5 class="mb-0"><i class="bi bi-info-circle me-2 text-gold"></i>A propos</h5>
+                <h5 class="mb-0"><i class="bi bi-info-circle me-2 text-gold"></i>À propos</h5>
             </div>
             <div class="card-body">
                 <dl class="mb-0">
                     <dt class="small text-muted">Application</dt>
-                    <dd>Managely - Centre Esthetique Parenthese Doree</dd>
+                    <dd>Managely — Centre Esthétique Parenthèse Dorée</dd>
                     <dt class="small text-muted">Technologie</dt>
                     <dd>Blazor WebAssembly (.NET 9)</dd>
-                    <dt class="small text-muted">Base de donnees</dt>
+                    <dt class="small text-muted">Base de données</dt>
                     <dd>Google Sheets API v4</dd>
                 </dl>
+                <hr />
+                <p class="small text-muted mb-0">
+                    <i class="bi bi-mortarboard me-1"></i>
+                    Application développée par des étudiants de <strong>2ème année de BTS SIO</strong>
+                    (Services Informatiques aux Organisations) de la
+                    <strong>CCI de Nîmes (Gard)</strong>,
+                    dans le cadre d'un stage en entreprise.
+                </p>
+                <p class="small text-muted mt-2 mb-0">
+                    <i class="bi bi-geo-alt me-1"></i>
+                    CCI du Gard — 12 rue de la République, 30000 Nîmes
+                </p>
             </div>
         </div>
     </div>
 
+    @* Mentions légales *@
     <div class="col-lg-6">
-        <div class="card border-0 shadow-sm">
+        <div class="card border-0 shadow-sm h-100">
             <div class="card-header pt-3">
-                <h5 class="mb-0"><i class="bi bi-box-arrow-right me-2 text-danger"></i>Session</h5>
+                <h5 class="mb-0"><i class="bi bi-shield-check me-2 text-gold"></i>Mentions légales</h5>
             </div>
             <div class="card-body">
-                <p class="text-muted">Se deconnecter de l'application.</p>
-                <button class="btn btn-outline-danger" @onclick="SignOutAsync">
-                    <i class="bi bi-box-arrow-right me-1"></i> Deconnexion
-                </button>
+                <div class="small text-muted">
+                    <h6 class="fw-semibold text-dark"><i class="bi bi-database-lock me-1"></i>Données stockées</h6>
+                    <p>
+                        L'application stocke les données suivantes dans un fichier Google Sheets privé :
+                        informations clients (nom, prénom, téléphone, email, adresse, mois d'anniversaire),
+                        historique des passages et prestations, inventaire des produits, et cartes cadeaux/fidélité.
+                    </p>
+
+                    <h6 class="fw-semibold text-dark"><i class="bi bi-lock me-1"></i>Utilisation des données</h6>
+                    <p>
+                        Les données sont utilisées exclusivement pour la gestion interne du centre esthétique
+                        (suivi clientèle, gestion des rendez-vous, programme de fidélité).
+                        Aucune donnée n'est partagée avec des tiers. L'accès est protégé par authentification Google OAuth 2.0.
+                    </p>
+
+                    <h6 class="fw-semibold text-dark"><i class="bi bi-bank me-1"></i>Cadre juridique</h6>
+                    <p>
+                        Conformément au RGPD (Règlement Général sur la Protection des Données),
+                        les clients disposent d'un droit d'accès, de rectification et de suppression
+                        de leurs données personnelles. Pour exercer ces droits, contactez directement
+                        le centre esthétique.
+                    </p>
+
+                    <div class="alert alert-warning small mb-0">
+                        <i class="bi bi-exclamation-triangle me-1"></i>
+                        <strong>Important :</strong> Cette application n'est <strong>pas</strong> un gestionnaire financier
+                        ou comptable. Elle sert uniquement à la <strong>gestion des clients, des prestations
+                        et du programme de fidélisation</strong> du centre esthétique. Elle ne remplace en aucun cas
+                        un logiciel de comptabilité agréé.
+                    </div>
+                </div>
             </div>
         </div>
     </div>
 </div>
 
 @code {
-    private bool _cacheCleared;
-
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (firstRender)
@@ -122,7 +164,7 @@
     private void ClearCache()
     {
         CacheSvc.InvalidateAll();
-        _cacheCleared = true;
+        Toast.ShowSuccess("Cache vidé avec succès !");
     }
 
     private async Task SignOutAsync()

@@ -1,6 +1,7 @@
 @page "/prestations"
 @inject PrestationService PrestaSvc
 @inject GoogleAuthService AuthService
+@inject ToastService Toast
 @inject NavigationManager Nav
 
 <PageTitle>Prestations - Managely</PageTitle>
@@ -18,11 +19,13 @@
     }
 </div>
 
-<AlertMessage Message="@_alert" Type="@_alertType" OnDismiss="() => _alert = string.Empty" />
-
 @if (_loading)
 {
     <LoadingSpinner />
+}
+else if (_all.Count == 0)
+{
+    <div class="alert alert-info"><i class="bi bi-info-circle me-2"></i>Aucune prestation dans le catalogue. Commencez par en ajouter une !</div>
 }
 else
 {
@@ -32,6 +35,7 @@ else
             <div class="col-12">
                 <h5 class="text-muted mb-3">
                     <i class="bi bi-tag me-1"></i>@(string.IsNullOrEmpty(cat.Key) ? "Sans catégorie" : cat.Key)
+                    <span class="badge bg-light text-dark ms-1">@cat.Count()</span>
                 </h5>
             </div>
             @foreach (var p in cat)
@@ -41,29 +45,27 @@ else
                         <div class="card-body">
                             <div class="d-flex justify-content-between align-items-start">
                                 <div>
-                                    <h6 class="fw-bold mb-1">@p.Nom</h6>
-                                    <span class="badge bg-gold-subtle text-gold">@p.PrixDefaut.ToString("N0") €</span>
+                                    <h6 class="fw-bold mb-2">@p.Nom</h6>
+                                    <span class="badge bg-gold-subtle text-gold fs-6">@p.PrixDefaut.ToString("N0") €</span>
                                     @if (p.DureeMinutes > 0)
                                     {
-                                        <span class="badge bg-light text-dark ms-1">@p.DureeMinutes min</span>
+                                        <span class="badge bg-light text-dark ms-1"><i class="bi bi-clock me-1"></i>@p.DureeMinutes min</span>
                                     }
                                 </div>
-                                <div>
-                                    @if (!p.Actif)
-                                    {
-                                        <span class="badge bg-secondary">Inactif</span>
-                                    }
-                                </div>
+                                @if (!p.Actif)
+                                {
+                                    <span class="badge bg-secondary">Inactif</span>
+                                }
                             </div>
                         </div>
                         @if (AuthService.CanWrite)
                         {
-                            <div class="card-footer bg-transparent border-0 d-flex gap-1">
-                                <button class="btn btn-sm btn-outline-secondary" @onclick="() => ShowEdit(p)">
-                                    <i class="bi bi-pencil"></i>
+                            <div class="card-footer bg-transparent border-0 d-flex gap-2">
+                                <button class="btn btn-sm btn-outline-secondary" @onclick="() => ShowEdit(p)" title="Modifier">
+                                    <i class="bi bi-pencil me-1"></i>Modifier
                                 </button>
-                                <button class="btn btn-sm btn-outline-danger" @onclick="() => ConfirmDelete(p)">
-                                    <i class="bi bi-trash"></i>
+                                <button class="btn btn-sm btn-outline-danger" @onclick="() => ConfirmDelete(p)" title="Supprimer">
+                                    <i class="bi bi-trash me-1"></i>Supprimer
                                 </button>
                             </div>
                         }
@@ -81,37 +83,33 @@ else
         <div class="modal-dialog">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h5 class="modal-title">@(_editing.RowIndex == 0 ? "Nouvelle prestation" : "Modifier la prestation")</h5>
+                    <h5 class="modal-title"><i class="bi bi-scissors me-2"></i>@(_editing.RowIndex == 0 ? "Nouvelle prestation" : "Modifier la prestation")</h5>
                     <button type="button" class="btn-close" @onclick="CloseModal"></button>
                 </div>
                 <div class="modal-body">
+                    <AlertMessage Message="@_alert" Type="@_alertType" OnDismiss="() => _alert = string.Empty" />
                     <div class="row g-3">
                         <div class="col-12">
-                            <label class="form-label fw-semibold">Nom de la prestation <span class="text-danger">*</span></label>
+                            <label class="form-label fw-semibold">Nom <span class="text-danger">*</span></label>
                             <input type="text" class="form-control" @bind="_editing.Nom" placeholder="Ex: Soin visage hydratant" />
-                            <small class="text-muted">Nom tel qu'il apparaîtra dans le catalogue et les passages.</small>
                         </div>
                         <div class="col-md-6">
                             <label class="form-label fw-semibold">Catégorie</label>
-                            <input type="text" class="form-control" @bind="_editing.Categorie" placeholder="Ex: Soins visage, Épilation..." />
-                            <small class="text-muted">Permet de regrouper les prestations par type.</small>
+                            <input type="text" class="form-control" @bind="_editing.Categorie" placeholder="Ex: Soins visage" />
                         </div>
                         <div class="col-md-6">
-                            <label class="form-label fw-semibold">Prix par défaut (€) <span class="text-danger">*</span></label>
-                            <input type="number" class="form-control" @bind="_editing.PrixDefaut" step="0.01" min="0" placeholder="0.00" />
-                            <small class="text-muted">Prix proposé automatiquement lors d'un passage.</small>
+                            <label class="form-label fw-semibold">Prix (€) <span class="text-danger">*</span></label>
+                            <input type="number" class="form-control" @bind="_editing.PrixDefaut" step="0.01" min="0" />
                         </div>
                         <div class="col-md-6">
-                            <label class="form-label fw-semibold">Durée estimée (minutes)</label>
-                            <input type="number" class="form-control" @bind="_editing.DureeMinutes" min="0" placeholder="0" />
-                            <small class="text-muted">Durée indicative du soin.</small>
+                            <label class="form-label fw-semibold">Durée (min)</label>
+                            <input type="number" class="form-control" @bind="_editing.DureeMinutes" min="0" />
                         </div>
                         <div class="col-md-6">
                             <div class="form-check mt-4">
                                 <input class="form-check-input" type="checkbox" @bind="_editing.Actif" />
-                                <label class="form-check-label fw-semibold">Prestation active</label>
+                                <label class="form-check-label">Active</label>
                             </div>
-                            <small class="text-muted">Désactiver masque la prestation du catalogue sans la supprimer.</small>
                         </div>
                     </div>
                 </div>
@@ -119,7 +117,7 @@ else
                     <button class="btn btn-secondary" @onclick="CloseModal">Annuler</button>
                     <button class="btn btn-gold" @onclick="SaveAsync" disabled="@_saving">
                         @if (_saving) { <span class="spinner-border spinner-border-sm me-1"></span> }
-                        Enregistrer
+                        <i class="bi bi-check-lg me-1"></i>Enregistrer
                     </button>
                 </div>
             </div>
@@ -156,15 +154,17 @@ else
     private async Task LoadAsync()
     {
         _loading = true; StateHasChanged();
-        try { _all = await PrestaSvc.GetAllAsync(true); GroupData(); }
-        catch (Exception ex) { _alert = ex.Message; _alertType = "danger"; }
+        try { _all = await PrestaSvc.GetAllAsync(true); _grouped = _all.GroupBy(p => p.Categorie).OrderBy(g => g.Key); }
+        catch (Exception ex) { Toast.ShowError(ex.Message); }
         finally { _loading = false; StateHasChanged(); }
     }
 
-    private void GroupData() => _grouped = _all.GroupBy(p => p.Categorie).OrderBy(g => g.Key);
-
-    private void ShowAdd() { _editing = new Prestation { Actif = true }; _showModal = true; }
-    private void ShowEdit(Prestation p) { _editing = new Prestation { RowIndex = p.RowIndex, Guid = p.Guid, Nom = p.Nom, Categorie = p.Categorie, PrixDefaut = p.PrixDefaut, DureeMinutes = p.DureeMinutes, Actif = p.Actif }; _showModal = true; }
+    private void ShowAdd() { _editing = new Prestation { Actif = true }; _showModal = true; _alert = ""; }
+    private void ShowEdit(Prestation p)
+    {
+        _editing = new Prestation { RowIndex = p.RowIndex, Guid = p.Guid, Nom = p.Nom, Categorie = p.Categorie, PrixDefaut = p.PrixDefaut, DureeMinutes = p.DureeMinutes, Actif = p.Actif };
+        _showModal = true; _alert = "";
+    }
     private void CloseModal() { _showModal = false; _editing = new(); }
     private void ConfirmDelete(Prestation p) { _toDelete = p; _showDelete = true; }
 
@@ -177,9 +177,9 @@ else
             if (_editing.RowIndex == 0) await PrestaSvc.AddAsync(_editing);
             else await PrestaSvc.UpdateAsync(_editing);
             CloseModal(); await LoadAsync();
-            _alert = "Prestation enregistrée."; _alertType = "success";
+            Toast.ShowSuccess("Prestation enregistrée.");
         }
-        catch (Exception ex) { _alert = ex.Message; _alertType = "danger"; }
+        catch (Exception ex) { Toast.ShowError(ex.Message); }
         finally { _saving = false; StateHasChanged(); }
     }
 
@@ -191,9 +191,9 @@ else
         {
             await PrestaSvc.DeleteAsync(_toDelete.RowIndex);
             _showDelete = false; _toDelete = null; await LoadAsync();
-            _alert = "Prestation supprimée."; _alertType = "success";
+            Toast.ShowSuccess("Prestation supprimée.");
         }
-        catch (Exception ex) { _alert = ex.Message; _alertType = "danger"; }
+        catch (Exception ex) { Toast.ShowError(ex.Message); }
         finally { _deleting = false; StateHasChanged(); }
     }
 }

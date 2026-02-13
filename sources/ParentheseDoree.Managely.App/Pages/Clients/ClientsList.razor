@@ -1,6 +1,7 @@
 @page "/clients"
 @inject ClientService ClientSvc
 @inject GoogleAuthService AuthService
+@inject ToastService Toast
 @inject NavigationManager Nav
 
 <PageTitle>Clients - Managely</PageTitle>
@@ -18,13 +19,11 @@
     }
 </div>
 
-<AlertMessage Message="@_alert" Type="@_alertType" OnDismiss="() => _alert = string.Empty" />
-
 <div class="card mb-4 border-0 shadow-sm">
     <div class="card-body">
         <div class="row g-3 align-items-center">
             <div class="col-md-6">
-                <SearchBar Value="@_search" ValueChanged="OnSearch" Placeholder="Rechercher un client..." />
+                <SearchBar Value="@_search" ValueChanged="OnSearch" Placeholder="Rechercher (nom, téléphone, email, mois anniversaire)..." />
             </div>
             <div class="col-md-3">
                 <button class="btn btn-outline-secondary w-100" @onclick="LoadAsync" disabled="@_loading">
@@ -46,14 +45,14 @@ else if (_filtered.Count == 0)
 {
     <div class="alert alert-info">
         <i class="bi bi-info-circle me-2"></i>
-        @(string.IsNullOrEmpty(_search) ? "Aucun client enregistré." : "Aucun client trouvé.")
+        @(string.IsNullOrEmpty(_search) ? "Aucun client enregistré." : "Aucun client trouvé pour cette recherche.")
     </div>
 }
 else
 {
     @* Vue mobile : cards *@
     <div class="d-md-none">
-        @foreach (var c in _filtered)
+        @foreach (var c in GetPage())
         {
             <div class="card border-0 shadow-sm mb-2 cursor-pointer" @onclick='() => Nav.NavigateTo($"clients/{c.Guid}")'>
                 <div class="card-body p-3">
@@ -64,9 +63,9 @@ else
                             {
                                 <div class="small text-muted"><i class="bi bi-telephone me-1"></i>@c.NumeroTelephone</div>
                             }
-                            @if (!string.IsNullOrEmpty(c.Email))
+                            @if (!string.IsNullOrEmpty(c.MoisAnniversaire))
                             {
-                                <div class="small text-muted"><i class="bi bi-envelope me-1"></i>@c.Email</div>
+                                <div class="small text-muted"><i class="bi bi-cake2 me-1"></i>@c.MoisAnniversaire</div>
                             }
                         </div>
                         <div class="d-flex gap-1">
@@ -104,13 +103,17 @@ else
                     </tr>
                 </thead>
                 <tbody>
-                    @foreach (var c in _filtered)
+                    @foreach (var c in GetPage())
                     {
                         <tr>
                             <td><strong>@c.NomComplet</strong></td>
                             <td>
                                 @if (!string.IsNullOrEmpty(c.NumeroTelephone))
-                                {<i class="bi bi-telephone me-1 text-muted"></i>@c.NumeroTelephone}
+                                {
+                                    <a href="tel:@c.NumeroTelephone.Replace(" ", "")" class="text-decoration-none">
+                                        <i class="bi bi-telephone me-1 text-muted"></i>@c.NumeroTelephone
+                                    </a>
+                                }
                             </td>
                             <td>
                                 @if (!string.IsNullOrEmpty(c.Email))
@@ -140,6 +143,28 @@ else
             </table>
         </div>
     </div>
+
+    @* Pagination *@
+    @if (TotalPages > 1)
+    {
+        <nav class="mt-3 d-flex justify-content-center">
+            <ul class="pagination pagination-sm mb-0">
+                <li class="page-item @(_page <= 1 ? "disabled" : "")">
+                    <button class="page-link" @onclick="() => GoToPage(_page - 1)"><i class="bi bi-chevron-left"></i></button>
+                </li>
+                @for (int i = StartPage; i <= EndPage; i++)
+                {
+                    var pg = i;
+                    <li class="page-item @(pg == _page ? "active" : "")">
+                        <button class="page-link" @onclick="() => GoToPage(pg)">@pg</button>
+                    </li>
+                }
+                <li class="page-item @(_page >= TotalPages ? "disabled" : "")">
+                    <button class="page-link" @onclick="() => GoToPage(_page + 1)"><i class="bi bi-chevron-right"></i></button>
+                </li>
+            </ul>
+        </nav>
+    }
 }
 
 <ConfirmModal IsVisible="_showDelete" Title="Confirmer la suppression"
@@ -157,11 +182,18 @@ else
     private string _search = "";
     private string _sort = "Nom";
     private bool _sortAsc = true;
-    private string _alert = "";
-    private string _alertType = "info";
     private bool _showDelete;
     private bool _deleting;
     private Client? _toDelete;
+
+    // Pagination
+    private int _page = 1;
+    private const int PageSize = 25;
+    private int TotalPages => Math.Max(1, (int)Math.Ceiling(_filtered.Count / (double)PageSize));
+    private int StartPage => Math.Max(1, _page - 2);
+    private int EndPage => Math.Min(TotalPages, _page + 2);
+    private List<Client> GetPage() => _filtered.Skip((_page - 1) * PageSize).Take(PageSize).ToList();
+    private void GoToPage(int p) { _page = Math.Clamp(p, 1, TotalPages); StateHasChanged(); }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -178,11 +210,11 @@ else
     {
         _loading = true; StateHasChanged();
         try { _all = await ClientSvc.GetAllAsync(true); Filter(); }
-        catch (Exception ex) { ShowAlert($"Erreur: {ex.Message}", "danger"); }
+        catch (Exception ex) { Toast.ShowError($"Erreur: {ex.Message}"); }
         finally { _loading = false; StateHasChanged(); }
     }
 
-    private void OnSearch(string val) { _search = val; Filter(); StateHasChanged(); }
+    private void OnSearch(string val) { _search = val; _page = 1; Filter(); StateHasChanged(); }
 
     private void Filter()
     {
@@ -190,10 +222,12 @@ else
         if (!string.IsNullOrWhiteSpace(_search))
         {
             var t = Client.SupprimerAccents(_search.ToLower());
-            q = q.Where(c => Client.SupprimerAccents(c.Nom).Contains(t, StringComparison.OrdinalIgnoreCase)
+            q = q.Where(c =>
+                Client.SupprimerAccents(c.Nom).Contains(t, StringComparison.OrdinalIgnoreCase)
                 || Client.SupprimerAccents(c.Prenom).Contains(t, StringComparison.OrdinalIgnoreCase)
-                || c.NumeroTelephone.Contains(t, StringComparison.OrdinalIgnoreCase)
-                || Client.SupprimerAccents(c.Email).Contains(t, StringComparison.OrdinalIgnoreCase));
+                || c.NumeroTelephone.Replace(" ", "").Contains(t.Replace(" ", ""), StringComparison.OrdinalIgnoreCase)
+                || Client.SupprimerAccents(c.Email).Contains(t, StringComparison.OrdinalIgnoreCase)
+                || Client.SupprimerAccents(c.MoisAnniversaire).Contains(t, StringComparison.OrdinalIgnoreCase));
         }
         _filtered = _sort switch
         {
@@ -228,13 +262,11 @@ else
         try
         {
             await ClientSvc.DeleteAsync(_toDelete.RowIndex);
-            ShowAlert("Client supprimé.", "success");
+            Toast.ShowSuccess($"Client {_toDelete.NomComplet} supprimé.");
             _showDelete = false; _toDelete = null;
             await LoadAsync();
         }
-        catch (Exception ex) { ShowAlert($"Erreur: {ex.Message}", "danger"); }
+        catch (Exception ex) { Toast.ShowError($"Erreur: {ex.Message}"); }
         finally { _deleting = false; StateHasChanged(); }
     }
-
-    private void ShowAlert(string msg, string type) { _alert = msg; _alertType = type; }
 }

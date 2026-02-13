@@ -1,11 +1,13 @@
 @page "/"
-@inject FinanceService FinanceSvc
 @inject ClientService ClientSvc
 @inject PassageService PassageSvc
 @inject ProduitService ProduitSvc
+@inject CarteCadeauService CarteSvc
 @inject GoogleAuthService AuthService
+@inject ToastService Toast
 @inject BrowserLoggerService Logger
 @inject NavigationManager Nav
+@inject IJSRuntime JSRuntime
 
 @implements IDisposable
 
@@ -38,30 +40,30 @@ else
 
     @if (_isLoading)
     {
-        <LoadingSpinner Message="Chargement des donnees..." />
+        <LoadingSpinner Message="Chargement des données..." />
     }
     else
     {
-        @* Statistiques rapides — Vue d'ensemble *@
+        @* Statistiques rapides *@
         <h6 class="text-muted mb-3"><i class="bi bi-speedometer2 me-1"></i>Vue d'ensemble</h6>
         <div class="row g-3 mb-4">
             <div class="col-6 col-lg-3">
-                <StatCard Value="@_stats.TotalClients.ToString()" Label="Clients enregistrés"
+                <StatCard Value="@_totalClients.ToString()" Label="Clients enregistrés"
                           Icon="bi-people-fill" Color="primary" Clickable="true"
                           OnClick='() => Nav.NavigateTo("clients")' Footer="Gérer les clients" />
             </div>
             <div class="col-6 col-lg-3">
-                <StatCard Value="@_stats.TotalPassages.ToString()" Label="Passages (total)"
+                <StatCard Value="@_totalPassages.ToString()" Label="Passages (total)"
                           Icon="bi-calendar-check-fill" Color="success" Clickable="true"
                           OnClick='() => Nav.NavigateTo("passages")' Footer="Voir l'historique" />
             </div>
             <div class="col-6 col-lg-3">
-                <StatCard Value="@FormatEuro(_stats.CaMoisEnCours)" Label="CA du mois en cours"
-                          Icon="bi-currency-euro" Color="gold" Clickable="true"
-                          OnClick='() => Nav.NavigateTo("finance")' Footer="Bilan financier" />
+                <StatCard Value="@_passagesMois.ToString()" Label="Passages ce mois"
+                          Icon="bi-calendar-event" Color="gold" Clickable="true"
+                          OnClick='() => Nav.NavigateTo("passages")' Footer="Voir les passages" />
             </div>
             <div class="col-6 col-lg-3">
-                <StatCard Value="@_stats.CartesActives.ToString()" Label="Cartes & Bons actifs"
+                <StatCard Value="@_cartesActives.ToString()" Label="Cartes & Bons actifs"
                           Icon="bi-wallet2" Color="info" Clickable="true"
                           OnClick='() => Nav.NavigateTo("cartes-cadeaux")' Footer="Voir les cartes" />
             </div>
@@ -108,14 +110,17 @@ else
                     </div>
                 </div>
 
-                @* Derniers passages *@
+                @* Derniers passages (limité à 5) *@
                 <div class="card border-0 shadow-sm">
-                    <div class="card-header bg-transparent border-0 pt-3">
+                    <div class="card-header bg-transparent border-0 pt-3 d-flex justify-content-between align-items-center">
                         <h5 class="mb-0"><i class="bi bi-clock-history text-gold me-2"></i>Derniers passages</h5>
+                        <a href="passages" class="btn btn-sm btn-outline-secondary">
+                            Voir tout <i class="bi bi-arrow-right ms-1"></i>
+                        </a>
                     </div>
                     @if (_derniersPassages.Count == 0)
                     {
-                        <div class="card-body text-muted">Aucun passage recent.</div>
+                        <div class="card-body text-muted">Aucun passage récent.</div>
                     }
                     else
                     {
@@ -145,25 +150,40 @@ else
             <div class="col-lg-4">
                 @* Anniversaires du mois *@
                 <div class="card border-0 shadow-sm mb-4">
-                    <div class="card-header bg-transparent border-0 pt-3">
+                    <div class="card-header bg-transparent border-0 pt-3 d-flex justify-content-between align-items-center">
                         <h5 class="mb-0">
                             <i class="bi bi-cake2 text-gold me-2"></i>Anniversaires
                             <span class="badge bg-gold ms-1">@_anniversairesCeMois.Count</span>
                         </h5>
+                        @if (_anniversairesCeMois.Count > 0)
+                        {
+                            <button class="btn btn-sm btn-outline-secondary" @onclick="CopierListeAnniversaires" title="Copier la liste">
+                                <i class="bi bi-clipboard"></i>
+                            </button>
+                        }
                     </div>
-                    <div class="card-body">
+                    <div class="card-body" style="max-height: 300px; overflow-y: auto;">
                         @if (_anniversairesCeMois.Count == 0)
                         {
                             <p class="text-muted mb-0">Aucun anniversaire ce mois-ci.</p>
                         }
                         else
                         {
+                            <h6 class="text-muted small mb-2"><i class="bi bi-calendar-heart me-1"></i>Ce mois</h6>
                             <ul class="list-unstyled mb-0">
                                 @foreach (var c in _anniversairesCeMois)
                                 {
-                                    <li class="d-flex align-items-center mb-2">
-                                        <i class="bi bi-person-circle text-gold me-2"></i>
-                                        <a href="clients/@c.Guid" class="text-decoration-none">@c.NomComplet</a>
+                                    <li class="d-flex align-items-center justify-content-between mb-2">
+                                        <div class="d-flex align-items-center">
+                                            <i class="bi bi-person-circle text-gold me-2"></i>
+                                            <a href="clients/@c.Guid" class="text-decoration-none">@c.NomComplet</a>
+                                        </div>
+                                        @if (!string.IsNullOrEmpty(c.NumeroTelephone))
+                                        {
+                                            <a href="tel:@c.NumeroTelephone.Replace(" ", "")" class="btn btn-sm btn-outline-success" title="Appeler @c.NumeroTelephone">
+                                                <i class="bi bi-telephone"></i>
+                                            </a>
+                                        }
                                     </li>
                                 }
                             </ul>
@@ -172,12 +192,25 @@ else
                         @if (_anniversairesMoisProchain.Count > 0)
                         {
                             <hr />
-                            <h6 class="text-muted small mb-2">Mois prochain (@_anniversairesMoisProchain.Count)</h6>
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <h6 class="text-muted small mb-0"><i class="bi bi-calendar-plus me-1"></i>Mois prochain (@_anniversairesMoisProchain.Count)</h6>
+                                <button class="btn btn-sm btn-outline-secondary py-0 px-1" @onclick="CopierListeMoisProchain" title="Copier la liste">
+                                    <i class="bi bi-clipboard" style="font-size:0.75rem;"></i>
+                                </button>
+                            </div>
                             <ul class="list-unstyled mb-0">
                                 @foreach (var c in _anniversairesMoisProchain)
                                 {
-                                    <li class="small mb-1">
-                                        <i class="bi bi-person text-muted me-1"></i>@c.NomComplet
+                                    <li class="d-flex align-items-center justify-content-between mb-1">
+                                        <span class="small">
+                                            <i class="bi bi-person text-muted me-1"></i>@c.NomComplet
+                                        </span>
+                                        @if (!string.IsNullOrEmpty(c.NumeroTelephone))
+                                        {
+                                            <a href="tel:@c.NumeroTelephone.Replace(" ", "")" class="small text-muted text-decoration-none">
+                                                @c.NumeroTelephone
+                                            </a>
+                                        }
                                     </li>
                                 }
                             </ul>
@@ -212,13 +245,6 @@ else
                 }
             </div>
         </div>
-
-        @if (!string.IsNullOrEmpty(_errorMessage))
-        {
-            <div class="alert alert-warning mt-4">
-                <i class="bi bi-exclamation-triangle me-2"></i>@_errorMessage
-            </div>
-        }
     }
 }
 
@@ -226,9 +252,8 @@ else
     private bool _isAuthenticated;
     private bool _isLoading = true;
     private bool _isRefreshing;
-    private string? _errorMessage;
 
-    private DashboardStats _stats = new();
+    private int _totalClients, _totalPassages, _passagesMois, _cartesActives;
     private List<Passage> _derniersPassages = [];
     private List<Client> _anniversairesCeMois = [];
     private List<Client> _anniversairesMoisProchain = [];
@@ -258,20 +283,31 @@ else
     private async Task LoadDataAsync()
     {
         _isLoading = true;
-        _errorMessage = null;
         StateHasChanged();
 
         try
         {
-            _stats = await FinanceSvc.GetStatsAsync(DateTime.Now.Month, DateTime.Now.Year);
-
-            var passages = await PassageSvc.GetAllAsync();
-            _derniersPassages = passages.OrderByDescending(p => p.Date).Take(10).ToList();
-
             var clients = await ClientSvc.GetAllAsync();
+            var passages = await PassageSvc.GetAllAsync();
+            var cartes = await CarteSvc.GetAllAsync();
+
+            _totalClients = clients.Count;
+            _totalPassages = passages.Count;
             _clientNoms = clients.ToDictionary(c => c.Guid, c => c.NomComplet);
 
+            // Passages du mois en cours
             var moisActuel = DateTime.Now.Month;
+            var anneeActuelle = DateTime.Now.Year;
+            _passagesMois = passages.Count(p =>
+                DateTime.TryParseExact(p.Date, new[] { "dd/MM/yyyy", "yyyy-MM-dd" },
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    System.Globalization.DateTimeStyles.None, out var d)
+                && d.Month == moisActuel && d.Year == anneeActuelle);
+
+            _cartesActives = cartes.Count(c => c.EstUtilisable);
+
+            _derniersPassages = passages.OrderByDescending(p => p.Date).Take(5).ToList();
+
             var moisProchain = moisActuel == 12 ? 1 : moisActuel + 1;
             _anniversairesCeMois = await ClientSvc.GetAnniversairesMoisAsync(moisActuel);
             _anniversairesMoisProchain = await ClientSvc.GetAnniversairesMoisAsync(moisProchain);
@@ -281,7 +317,7 @@ else
         catch (Exception ex)
         {
             await Logger.ErrorAsync(LogCategory.API, "Erreur dashboard", new { error = ex.Message });
-            _errorMessage = "Impossible de charger les donnees.";
+            Toast.ShowError("Impossible de charger les données.");
         }
         finally
         {
@@ -296,7 +332,35 @@ else
         StateHasChanged();
         await LoadDataAsync();
         _isRefreshing = false;
+        Toast.ShowSuccess("Données actualisées.");
         StateHasChanged();
+    }
+
+    private async Task CopierListeAnniversaires()
+    {
+        await CopierListeContacts(_anniversairesCeMois, "ce mois");
+    }
+
+    private async Task CopierListeMoisProchain()
+    {
+        await CopierListeContacts(_anniversairesMoisProchain, "du mois prochain");
+    }
+
+    private async Task CopierListeContacts(List<Client> clients, string label)
+    {
+        var lines = clients
+            .Select(c => $"{c.NomComplet} — {(string.IsNullOrEmpty(c.NumeroTelephone) ? "Pas de tél." : c.NumeroTelephone)}")
+            .ToList();
+        var text = string.Join("\n", lines);
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("navigator.clipboard.writeText", text);
+            Toast.ShowSuccess($"{lines.Count} contact(s) {label} copié(s) !");
+        }
+        catch
+        {
+            Toast.ShowWarning("Impossible de copier dans le presse-papier.");
+        }
     }
 
     public void Dispose() { }

@@ -446,3 +446,87 @@ html, body {
 .alert-danger .btn-sm {
     margin-top: 0.25rem;
 }
+
+/* =========================================================================
+   Toast container
+   ========================================================================= */
+.toast-container .toast {
+    min-width: 300px;
+    max-width: 420px;
+    border-radius: 0.5rem;
+    animation: toastSlideIn 0.3s ease-out;
+}
+
+@keyframes toastSlideIn {
+    from {
+        opacity: 0;
+        transform: translateX(100%);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+.toast-body {
+    font-size: 0.9rem;
+}
+
+/* Mobile toast adjustments */
+@media (max-width: 575.98px) {
+    .toast-container {
+        left: 0.5rem !important;
+        right: 0.5rem !important;
+    }
+    .toast-container .toast {
+        min-width: auto;
+        max-width: 100%;
+    }
+}
+
+/* =========================================================================
+   Pagination styles
+   ========================================================================= */
+.pagination .page-link {
+    border-radius: 0.375rem;
+    margin: 0 2px;
+    border: 1px solid #dee2e6;
+    min-width: 36px;
+    text-align: center;
+}
+
+.pagination .page-item.active .page-link {
+    background-color: var(--gold-primary);
+    border-color: var(--gold-primary);
+    color: white;
+}
+
+.pagination .page-link:hover {
+    background-color: var(--gold-subtle);
+    border-color: var(--gold-primary);
+    color: var(--gold-dark);
+}
+
+/* =========================================================================
+   Scrollable containers
+   ========================================================================= */
+.card-body[style*="max-height"] {
+    scrollbar-width: thin;
+    scrollbar-color: var(--gold-light) transparent;
+}
+
+.card-body[style*="max-height"]::-webkit-scrollbar {
+    width: 6px;
+}
+
+.card-body[style*="max-height"]::-webkit-scrollbar-thumb {
+    background: var(--gold-light);
+    border-radius: 3px;
+}
+
+/* =========================================================================
+   Vente rapide modal - header color
+   ========================================================================= */
+.modal-header.bg-success .btn-close-white {
+    filter: brightness(0) invert(1);
+}
